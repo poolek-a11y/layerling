@@ -82,6 +82,8 @@ import { CUSTOM_SHAPES_FOLDER } from "@/lib/customShapesServer";
 import { downloadBackup, pngDataUrl, projectThumbnailBlob, projectThumbnailPngBytes, serverCustomShapesBackupEntries, writeServerBackup } from "@/lib/backupDownload";
 import { customShapesBackupEntries, restoreCustomShapesFromBackup } from "@/lib/myShapes";
 import { SHARED_PROJECTS_ENDPOINT } from "@/lib/sharedProjectsEndpoint";
+import { readLayerLabOpenRequest, withoutLayerLabOpenRequest } from "@/lib/layerlab/editorLink";
+import { LayerLabLink } from "@/components/layerlab/LayerLabLink";
 import { sendSavedWorkspaceDefaultsToServer, syncWorkspaceDefaultWithServer } from "@/lib/serverWorkspaceDefault";
 import { PICTURE_FILE_ACCEPT } from "@/lib/pictureIcon";
 import { designsToRecover, hiddenCopiesOf, isInlineThumbnail, LOST_DESIGNS_RECOVERED_KEY, orphanedProjectIds, projectListForLocalStorage, withStoredThumbnails, writeProjectList } from "@/lib/designListStorage";
@@ -2221,6 +2223,35 @@ export default function Home() {
     else createAndOpenProject();
   };
 
+  // From the LayerLab page: a new design, a student's own from their server folder, or a copy for the teacher.
+  const openLayerLabRef = useRef({ openSharedProject, openLylProjectFromFile, createNewDesign });
+  openLayerLabRef.current = { openSharedProject, openLylProjectFromFile, createNewDesign };
+  useEffect(() => {
+    if (!mounted) return;
+    const request = readLayerLabOpenRequest(window.location.search);
+    if (!request) return;
+    window.history.replaceState(null, "", withoutLayerLabOpenRequest(window.location.href));
+    if (request.kind === "new") {
+      void openLayerLabRef.current.createNewDesign();
+      return;
+    }
+    if (request.kind === "open") {
+      const name = request.fileName.replace(/\.(lyl|skf)$/i, "");
+      void openLayerLabRef.current.openSharedProject({ fileName: request.fileName, path: request.path, name, updatedAt: 0, size: 0, revision: "" });
+      return;
+    }
+    void (async () => {
+      const response = await fetch(request.src, { cache: "no-store" }).catch(() => null);
+      if (!response?.ok) {
+        setDashboardNotice(t("notice.openSharedFailed"));
+        return;
+      }
+      const fileName = /filename\*=UTF-8''([^;]+)/.exec(response.headers.get("content-disposition") ?? "")?.[1];
+      const file = new File([await response.blob()], fileName ? decodeURIComponent(fileName) : "LayerLab.lyl", { type: LYL_MEDIA_TYPE });
+      await openLayerLabRef.current.openLylProjectFromFile(file);
+    })();
+  }, [mounted]);
+
   const openStoreFolder = useCallback((path: string) => {
     void refreshSharedProjects(path);
   }, [refreshSharedProjects]);
@@ -3636,6 +3667,7 @@ function Dashboard({
           <input value={query} onChange={(event) => onQueryChange(event.currentTarget.value)} placeholder={t("dashboard.searchPlaceholder")} aria-label={t("dashboard.searchLabel")} />
         </div>
         <div className="dashboard-topbar-actions">
+          <LayerLabLink />
           <ThemeSwitch />
           <LanguageSwitch />
         </div>

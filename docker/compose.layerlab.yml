@@ -1,0 +1,33 @@
+# LayerLab, the classroom: layerling with classes, student work, iterations and teacher comments.
+# Put the settings into a .env file next to this one (at least LAYERLAB_TEACHER_PASSWORD and
+# LAYERLAB_SECRET), then: docker compose -f docker/compose.layerlab.yml up -d --build
+services:
+  layerling:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Where every design, class, iteration and comment is kept. Back this folder up.
+      # It lives in the volume below, which belongs to the container's user without a chown.
+      LAYERLING_SHARED_PROJECTS_DIR: "/app/.codex/layerlab"
+      # The teacher's password for /layerlab. Required: without it LayerLab stays off.
+      LAYERLAB_TEACHER_PASSWORD: "${LAYERLAB_TEACHER_PASSWORD:?set LAYERLAB_TEACHER_PASSWORD}"
+      # Signs the sign-in cookies. A long random string; changing it signs everybody out.
+      LAYERLAB_SECRET: "${LAYERLAB_SECRET:-}"
+      # Fewer tools and larger buttons for younger students; remove the line for the full program.
+      # LAYERLING_SIMPLE_MODE: "true"
+      # The address people use, when a reverse proxy rewrites the host:
+      # LAYERLING_ALLOWED_ORIGINS: "https://layerlab.example.com"
+    volumes:
+      # Student work, classes and comments (in layerlab/) and the start page's pictures. Docker fills a
+      # new named volume from the image, so it is writable by the container's user from the start.
+      - layerlab-data:/app/.codex
+
+volumes:
+  layerlab-data:

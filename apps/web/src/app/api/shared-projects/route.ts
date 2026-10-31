@@ -7,6 +7,8 @@ import { inspectLylProjectPackage, LYL_LIMITS, LYL_MEDIA_TYPE } from "@/lib/lylP
 import { originMatchesRequest } from "@/lib/sameOrigin";
 import { CUSTOM_SHAPES_FOLDER } from "@/lib/customShapesServer";
 import { storeFolderNameProblem } from "@/lib/storeFolderName";
+import { layerLabUserFolder } from "@/lib/layerlab/session";
+import { layerLabAfterMove, layerLabAfterSave } from "@/lib/layerlab/sharedStoreHooks";
 
 export const runtime = "nodejs";
 export const revalidate = false;
@@ -76,7 +78,8 @@ function sharedProjectsDirectory(request?: Request) {
   if (!configured) return null;
   const base = path.resolve(configured);
   if (!request) return base;
-  const userFolder = authenticatedUserFolder(request);
+  // A student signed in to LayerLab saves into a folder of their own, which their teacher can open.
+  const userFolder = layerLabUserFolder(request) ?? authenticatedUserFolder(request);
   if (userFolder) {
     return path.join(base, ".users", userFolder);
   }
@@ -582,6 +585,7 @@ async function moveProject(root: string, folder: string, requestedTarget: string
       hasThumbnail = await fs.rename(thumbnail, sharedThumbnailPath(target, fileName, movedRevision)).then(() => true, () => false);
     }
     const record = projectRecord(fileName, movedStat, hasThumbnail, folderKey(root, target));
+    await layerLabAfterMove(request, folderKey(root, folder), fileName, record.path, fileName);
     return NextResponse.json(
       { project: record, movedFrom: folderKey(root, folder) },
       { headers: { "Cache-Control": "no-store", ETag: `"${record.revision}"` } },
@@ -634,6 +638,7 @@ async function renameProjectFile(root: string, folder: string, requestedName: st
       hasThumbnail = await fs.rename(thumbnail, sharedThumbnailPath(folder, newFileName, renamedRevision)).then(() => true, () => false);
     }
     const record = projectRecord(newFileName, renamedStat, hasThumbnail, folderKey(root, folder));
+    await layerLabAfterMove(request, record.path, fileName, record.path, newFileName);
     return NextResponse.json(
       { project: record, renamedFrom: fileName },
       { headers: { "Cache-Control": "no-store", ETag: `"${record.revision}"` } },
@@ -1036,6 +1041,7 @@ export async function POST(request: Request) {
     if (currentRevision && currentRevision !== project.revision) {
       await fs.unlink(sharedThumbnailPath(folder, fileName, currentRevision)).catch(() => undefined);
     }
+    await layerLabAfterSave(request, folderPath, fileName, bytes, thumbnailBytes);
     return NextResponse.json(
       { project: { ...project, name: summary.projectName } },
       { status: currentStat ? 200 : 201, headers: { "Cache-Control": "no-store", ETag: `"${project.revision}"` } },
