@@ -27,6 +27,10 @@ function when(time: number) {
   return new Date(time).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+function plural(count: number, word: string) {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+
 function size(bytes: number) {
   return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
@@ -291,7 +295,7 @@ function TeacherView({ storeEnabled, onNotice }: { storeEnabled: boolean; onNoti
             <li key={entry.id}>
               <button type="button" className={entry.id === classId ? "active" : ""} onClick={() => setClassId(entry.id)}>
                 <span>{entry.name}</span>
-                <small>{entry.students} students</small>
+                <small>{plural(entry.students, "student")}</small>
               </button>
             </li>
           ))}
@@ -402,7 +406,7 @@ function StudentsPanel({ current, designs, onOpen, onAction }: {
           <div key={student.id} className="layerlab-card layerlab-student">
             <div className="layerlab-student-head">
               <h3>{student.name}</h3>
-              <small className="layerlab-muted">joined {when(student.joinedAt)} · {work.length} designs</small>
+              <small className="layerlab-muted">joined {when(student.joinedAt)} · {plural(work.length, "design")}</small>
               <span className="layerlab-spacer" />
               <button type="button" className="layerlab-button" onClick={() => {
                 const pin = window.prompt(`New PIN for ${student.name} (4 to 8 digits)`);
@@ -471,6 +475,7 @@ function TutorialsPanel({ current, onChanged, onNotice }: { current: LayerLabCla
   const upload = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!starterFile) return;
+    const formElement = event.currentTarget;
     setBusy(true);
     const form = new FormData();
     form.append("classId", current.id);
@@ -481,7 +486,7 @@ function TutorialsPanel({ current, onChanged, onNotice }: { current: LayerLabCla
       onChanged(answer.class);
       setStarterTitle("");
       setStarterFile(null);
-      event.currentTarget?.reset();
+      formElement.reset();
     } catch (error) {
       onNotice((error as Error).message);
     } finally {

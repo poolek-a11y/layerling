@@ -568,3 +568,5 @@
   .layerlab-review-right { border-left: 0; border-top: 1px solid var(--border); }
   .layerlab-content { padding: 12px 16px; }
 }
+
+.layerlab-tutorial h3 { font-weight: 700; }
