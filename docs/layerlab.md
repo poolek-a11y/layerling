@@ -51,6 +51,10 @@ LAYERLING_SHARED_PROJECTS_DIR=/srv/layerlab LAYERLAB_TEACHER_PASSWORD=... LAYERL
 LAYERLING_SHARED_PROJECTS_DIR=/srv/layerlab LAYERLAB_TEACHER_PASSWORD=... LAYERLAB_SECRET=... npm start
 ```
 
+## Who can reach what
+
+The site itself is public: anyone with the address can open the editor. With LayerLab switched on, the server folder is for signed-in people only. Students see their own folder, the teacher sees the main one, and a visitor who has not signed in saves to their own browser, as on layerling.com. Only someone with a class code can join a class, and only the teacher password opens the teacher area.
+
 ## Using it
 
 **Teacher.** Go to `/layerlab` and sign in. Create a class and give students its code. The *Students and work* tab lists each student's designs. Click one to see its versions and comments. In the *Tutorials and starters* tab, upload starters (save a design in layerling with *Save as file* and upload the `.lyl`) and write tutorials. You can also reset a student's PIN or make a new join code.
