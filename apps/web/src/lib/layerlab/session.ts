@@ -118,3 +118,11 @@ export function layerLabUserFolder(request: Request, env: Environment = process.
   const session = sessionFromRequest(request, env);
   return session?.role === "student" ? studentStoreFolder(session.classId, session.studentId) : null;
 }
+
+/**
+ * Whether the shared store is closed to this request: LayerLab is on and nobody is signed in to it.
+ * The site is public, so without this anyone with the link could open the teacher's server designs.
+ */
+export function layerLabClosesStore(request: Request, env: Environment = process.env) {
+  return layerLabEnabled(env) && !sessionFromRequest(request, env);
+}

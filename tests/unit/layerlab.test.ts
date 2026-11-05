@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as layerLabGet, POST as layerLabPost } from "@/app/api/layerlab/route";
-import { POST as sharedPost } from "@/app/api/shared-projects/route";
+import { GET as sharedGet, POST as sharedPost } from "@/app/api/shared-projects/route";
 import { POST as serverDefaultsPost } from "@/app/api/server-defaults/route";
 import { editorHistoryEntry } from "@/lib/editorHistory";
 import { readLayerLabOpenRequest, withoutLayerLabOpenRequest } from "@/lib/layerlab/editorLink";
@@ -236,6 +236,21 @@ describe("LayerLab", () => {
     const defaults = await serverDefaultsPost(new Request("http://localhost/api/server-defaults", { method: "POST", headers: { Cookie: ada } }));
     expect((await defaults.json()).newDesignsOnServer).toBe("always");
     expect(layerLabUserFolder(new Request("http://localhost/", { headers: { Cookie: teacher } }))).toBeNull();
+  });
+
+  it("closes the server folder to visitors who have not signed in", async () => {
+    const teacher = await teacherCookie();
+    const listing = (cookie?: string) => sharedGet(new Request("http://localhost/api/shared-projects", { headers: cookie ? { Cookie: cookie } : {} }));
+    expect((await (await listing()).json()).enabled).toBe(false);
+    const anonymousSave = await sharedPost(new Request("http://localhost/api/shared-projects?fileName=x.lyl", {
+      method: "POST",
+      headers: { Origin: "http://localhost" },
+      body: (await lyl("x")).slice().buffer,
+    }));
+    expect(anonymousSave.status).toBe(404);
+    expect((await (await listing(teacher)).json()).enabled).toBe(true);
+    delete process.env.LAYERLAB_TEACHER_PASSWORD;
+    expect((await (await listing()).json()).enabled).toBe(true);
   });
 
   it("is switched off without a teacher password", async () => {

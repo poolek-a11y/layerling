@@ -7,7 +7,7 @@ import { inspectLylProjectPackage, LYL_LIMITS, LYL_MEDIA_TYPE } from "@/lib/lylP
 import { originMatchesRequest } from "@/lib/sameOrigin";
 import { CUSTOM_SHAPES_FOLDER } from "@/lib/customShapesServer";
 import { storeFolderNameProblem } from "@/lib/storeFolderName";
-import { layerLabUserFolder } from "@/lib/layerlab/session";
+import { layerLabClosesStore, layerLabUserFolder } from "@/lib/layerlab/session";
 import { layerLabAfterMove, layerLabAfterSave } from "@/lib/layerlab/sharedStoreHooks";
 
 export const runtime = "nodejs";
@@ -83,6 +83,8 @@ function sharedProjectsDirectory(request?: Request) {
   if (userFolder) {
     return path.join(base, ".users", userFolder);
   }
+  // With LayerLab on, the server folder is for the classroom: a visitor who has not signed in keeps to the browser.
+  if (layerLabClosesStore(request)) return null;
   return base;
 }
 
