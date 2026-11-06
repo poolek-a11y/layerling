@@ -20,8 +20,12 @@
   color: var(--primary);
 }
 
+/* The editor keeps the page itself from scrolling (body { overflow: hidden } in globals.css),
+   so the LayerLab page scrolls inside its own shell: long forms reach their Save button. */
 .layerlab-shell {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-ui);
