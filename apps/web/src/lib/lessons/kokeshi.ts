@@ -10,6 +10,7 @@ import {
   formatInches,
   holes,
   inches,
+  isHollowed,
   mirroredPair,
   pass,
   solids,
@@ -17,37 +18,63 @@ import {
   touches,
   type Part,
 } from "@/lib/lessons/sceneChecks";
-import type { FigurePart, Lesson, LessonScene, LessonStep, StepCheck } from "@/lib/lessons/types";
+import type { FigurePart, GhostPart, Lesson, LessonScene, LessonStep, StepCheck } from "@/lib/lessons/types";
 
 /*
- * Kokeshi Maker: the lesson content. Sizes in the text are inches (the doll is 6 to 8 in tall);
- * the checks compare in millimetres, as the editor stores them, and accept a range so every
- * student's doll can be a little different. Students build every part from basic shapes:
- * nothing here places a shape for them.
+ * Kokeshi Maker: the lesson content. Sizes in the text are inches in fractions, as the editor shows
+ * them (the doll is 6 to 8 in tall); the checks compare in millimetres, as the editor stores them,
+ * and accept a range so every student's doll can be a little different. Students build every part
+ * from basic shapes: nothing here places a shape for them. Front is +z, as the view cube's FRONT.
  */
+
+/* ---------- sizes (inches) ---------- */
+
+const BODY_W = 2.5;
+const BODY_H = 4;
+const HEAD_W = 2.625;
+const SINK = 0.125;
 
 /* ---------- the front-view pictures (inches) ---------- */
 
-const BODY: FigurePart = { shape: "rect", x: 0, y: 0, w: 2.5, h: 4 };
-const HEAD: FigurePart = { shape: "ellipse", x: 0, y: 3.85, w: 2.5, h: 2.5 };
-const HAIR: FigurePart = { shape: "dome", x: 0, y: 5.0, w: 2.75, h: 1.45 };
+const HEAD_Y = BODY_H - SINK;
+const BODY: FigurePart = { shape: "rect", x: 0, y: 0, w: BODY_W, h: BODY_H };
+const HEAD: FigurePart = { shape: "ellipse", x: 0, y: HEAD_Y, w: HEAD_W, h: HEAD_W };
+const BOB: FigurePart = { shape: "dome", x: 0, y: HEAD_Y + 0.5, w: 2.875, h: 2.25 };
+const BANGS: FigurePart = { shape: "rect", x: 0, y: HEAD_Y + 0.5, w: 1.9, h: 1.25 };
 const OBI: FigurePart = { shape: "rect", x: 0, y: 1.8, w: 2.75, h: 0.5 };
 const done = (part: FigurePart): FigurePart => ({ ...part, state: "done" });
 const added = (part: FigurePart): FigurePart => ({ ...part, state: "new" });
 const hole = (part: FigurePart): FigurePart => ({ ...part, state: "hole" });
 const DOLL = [done(BODY), done(HEAD)];
-const DRESSED = [...DOLL, done(HAIR), done(OBI)];
+const DRESSED = [...DOLL, done(BOB), done(OBI)];
 
 /* ---------- small check builders ---------- */
 
+const PROPORTION_TIP = "To change the size without changing the shape, turn on Keep proportions in the shape's card (or hold Shift while you drag a corner handle), or use Scale by percent.";
+
+/** The body, or before it is sized, the biggest shape standing on the workplane (so a size check can say how big it is now). */
 const needBody = (then: (body: Part, scene: LessonScene) => ReturnType<StepCheck>): StepCheck => (scene) => {
-  const body = findBody(scene);
-  return body ? then(body, scene) : fail("Start with the body: a shape at least 1.5 in tall standing on the workplane.");
+  const body = findBody(scene)
+    ?? solids(scene).filter((part) => part.box.minY < 1.5).sort((a, b) => b.w * b.h * b.d - a.w * a.h * a.d)[0];
+  return body ? then(body, scene) : fail("Start with the body: drag a shape onto the workplane.");
 };
 
 const needHead = (then: (head: Part, body: Part, scene: LessonScene) => ReturnType<StepCheck>): StepCheck => needBody((body, scene) => {
   const head = findHead(scene);
-  return head ? then(head, body, scene) : fail("Add the head: a sphere at least 1.5 in across, above the body.");
+  return head ? then(head, body, scene) : fail("Add the head: a Sphere at least 1 1/2 in across, above the body.");
+});
+
+/** Before it is sized and lifted: the biggest sphere that isn't the body, wherever it is. */
+function anyHead(scene: LessonScene) {
+  const body = findBody(scene);
+  return solids(scene)
+    .filter((part) => part !== body && (part.kind === "sphere" || part.kind === "ellipse"))
+    .sort((a, b) => b.w - a.w)[0] ?? null;
+}
+
+const needAnyHead = (then: (head: Part, body: Part) => ReturnType<StepCheck>): StepCheck => needBody((body, scene) => {
+  const head = anyHead(scene);
+  return head ? then(head, body) : fail("Drag a Sphere onto the workplane for the head.");
 });
 
 /** The hair or helmet: the biggest dome or sphere that covers the top of the head. */
@@ -55,25 +82,38 @@ function findHair(scene: LessonScene) {
   const head = findHead(scene);
   if (!head) return null;
   return solids(scene)
-    .filter((part) => part !== head && (part.kind === "halfSphere" || part.kind === "sphere" || part.kind === "ellipse") && part.w >= head.w * 0.9 && part.box.maxY >= head.box.maxY - 1 && touches(part, head))
+    .filter((part) => part !== head && (part.kind === "halfSphere" || part.kind === "sphere" || part.kind === "ellipse" || part.kind === "paraboloid") && part.w >= head.w * 0.9 && part.box.maxY >= head.box.maxY - 1 && touches(part, head))
     .sort((a, b) => b.w - a.w)[0] ?? null;
 }
 
 const needHair = (then: (hair: Part, head: Part, scene: LessonScene) => ReturnType<StepCheck>): StepCheck => needHead((head, _body, scene) => {
   const hair = findHair(scene);
-  return hair ? then(hair, head, scene) : fail("Cover the top of the head with a Half sphere a little wider than the head.");
+  return hair ? then(hair, head, scene) : fail("Cover the top of the head with a Half Sphere a little wider than the head.");
 });
 
-/** Parts of about the same size, at least `count` of them, all touching `target`: what a pattern makes. */
-function patternAround(parts: Part[], target: Part, count: number) {
-  const touching = parts.filter((part) => touches(part, target, 1));
+const centred = (a: Part, b: Part) => Math.abs(a.cx - b.cx) <= 0.8 && Math.abs(a.cz - b.cz) <= 0.8;
+
+/** How many of `parts` share one size: what Pattern or Duplicate makes. */
+function sameSizeCount(parts: Part[]) {
   const bySize = new Map<string, number>();
-  for (const part of touching) {
+  for (const part of parts) {
     const key = [part.shape.width, part.shape.height, part.shape.depth].map((value) => Math.round(value)).join("x");
     bySize.set(key, (bySize.get(key) ?? 0) + 1);
   }
-  return Math.max(0, ...bySize.values()) >= count;
+  return Math.max(0, ...bySize.values());
 }
+
+/** Parts of about the same size, at least `count` of them, all touching `target`: what a pattern makes. */
+const patternAround = (parts: Part[], target: Part, count: number) => sameSizeCount(parts.filter((part) => touches(part, target, 1))) >= count;
+
+/** A part's own sizes, smallest first (not its box, which a turn changes). */
+const ownSizes = (part: Part) => [part.shape.width ?? part.shape.size, part.shape.height, part.shape.depth ?? part.shape.size].sort((a, b) => a - b);
+
+/** Small thin parts (an accessory's ribs or petals): thinnest side under `thin` in, longest under `long` in. */
+const smallThin = (scene: LessonScene, thin: number, long: number) => solids(scene).filter((part) => {
+  const sizes = ownSizes(part);
+  return sizes[0] <= inches(thin) && sizes[2] <= inches(long);
+});
 
 /** Long and thin by its own size (not its box, which a tilt makes round). */
 const elongated = (part: Part) => {
@@ -83,7 +123,40 @@ const elongated = (part: Part) => {
 
 const printable: StepCheck = connectedAndPrintable;
 
-/* ---------- sections ---------- */
+const allPartsWrapped = (scene: LessonScene) => solids(scene).some((part) => Boolean(part.shape.cylinderWrap));
+
+/** A size check that says what the size is now and how to fix it without spoiling the shape. */
+function sizeAdvice(what: string, measured: number, low: number, high: number, target: string, dimension: "tall" | "wide" | "across") {
+  if (between(measured, inches(low), inches(high))) return null;
+  const direction = measured < inches(low) ? "bigger" : "smaller";
+  return fail(`Your ${what} is ${formatInches(measured)} ${dimension}. Aim for ${target}: make it ${direction}. ${PROPORTION_TIP}`);
+}
+
+/* ---------- the orange outlines on the build plate (mm) ---------- */
+
+const ghostBody = (kind: GhostPart["kind"] = "cylinder", w = BODY_W, h = BODY_H): GhostPart[] => [{ kind, x: 0, z: 0, y: 0, w: inches(w), d: inches(w), h: inches(h) }];
+
+const ghostHead = (scene: LessonScene): GhostPart[] | null => {
+  const body = findBody(scene);
+  if (!body) return null;
+  return [{ kind: "sphere", x: body.cx, z: body.cz, y: body.box.maxY - inches(SINK), w: inches(HEAD_W), d: inches(HEAD_W), h: inches(HEAD_W) }];
+};
+
+const onHead = (scene: LessonScene, make: (head: Part) => GhostPart[]) => {
+  const head = findHead(scene);
+  return head ? make(head) : null;
+};
+
+const ghostBob = (scene: LessonScene) => onHead(scene, (head) => [{ kind: "sphere", x: head.cx, z: head.cz, y: head.box.minY - inches(0.6), w: head.w + inches(0.25), d: head.d + inches(0.25), h: head.h + inches(0.725) }]);
+
+const ghostBangs = (scene: LessonScene) => onHead(scene, (head) => [{ kind: "box", hole: true, x: head.cx, z: head.cz + head.d / 2, y: head.box.minY + inches(0.4), w: inches(1.9), d: inches(1.2), h: inches(1.35) }]);
+
+const ghostObi = (scene: LessonScene): GhostPart[] | null => {
+  const body = findBody(scene);
+  return body ? [{ kind: "cylinder", x: body.cx, z: body.cz, y: body.box.minY + body.h * 0.45, w: body.w + inches(0.25), d: body.d + inches(0.25), h: inches(0.5) }] : null;
+};
+
+/* ---------- welcome ---------- */
 
 const welcome: LessonStep[] = [
   {
@@ -99,137 +172,318 @@ const welcome: LessonStep[] = [
   },
   {
     id: "plan",
-    title: "Your plan",
-    body: "You'll build your doll from simple shapes, one part at a time: body, head, hair or a helmet, kimono, a face and an accessory. Then you'll 3D print it.\n\nEvery step names the skill you are practising. At any step you can choose My own design and build it your way, and come back to the guided steps whenever you like.",
-    figure: { parts: [done(BODY), { ...done(HEAD) }, done(HAIR), done(OBI)], caption: "The parts you'll build, from the bottom up." },
+    title: "Your choices",
+    body: "You'll build your doll from simple shapes, one part at a time, and choose at each step:\n\nBody: cylinder, flat-bottomed sphere, or cone (pointed or rounded).\n\nHead: a sphere sized to fit your body.\n\nHair or helmet: bob, bob with a bun, bob with pigtails, or a samurai helmet.\n\nKimono: an obi for everyone, then sleeves, a sash with a bow, a collar, a flower pattern or a wrapped design.\n\nArmor (optional): chest plate, shoulder guards, skirt plates.\n\nFace: eyes, brows, mouth and cheeks.\n\nAccessories: fan, sword, umbrella, flower or hair ornament.\n\nThen you'll check it, bundle it in its print colours and print it.",
+    figure: { parts: DRESSED, caption: "The parts you'll build, from the bottom up." },
+  },
+  {
+    id: "name",
+    title: "Name your design",
+    body: "Click the design's name at the top of the screen (a new design is called something like \"Untitled design 1\") and rename it Kokeshi_ followed by your name, for example Kokeshi_Maya. Press Enter.",
+    check: (scene) => (/^kokeshi_\S+/i.test((scene.projectName ?? "").trim()) ? pass() : fail("Rename the design Kokeshi_ followed by your name, for example Kokeshi_Maya.")),
+    success: "Your teacher can find your design by its name.",
+    hint: "The name box is in the middle of the top bar. Click it, type the new name, and press Enter.",
   },
   {
     id: "look",
     title: "Look around",
-    body: "Right-drag to orbit around the workplane, scroll to zoom, and middle-drag to pan. Try each one now.",
-    skill: "Navigate the view",
-    hint: "Lost? The house button next to the view cube brings the view back to the start.",
+    body: "Right-drag to orbit around the workplane, scroll to zoom, and middle-drag to pan. Try each one now.\n\nThe house button next to the view cube brings the view back to the start whenever you get lost.",
   },
   {
     id: "undo",
     title: "Your undo button",
-    body: "Mistakes are fine. Ctrl+Z (Cmd+Z on a Mac) takes one step back, and Ctrl+Y goes forward again.",
-    skill: "Undo",
-    didYouKnow: "Layerling also keeps a history slider, so you can look at any earlier version of your design.",
+    body: "Mistakes are fine. Ctrl+Z (Cmd+Z on a Mac) takes one step back, and Ctrl+Y goes forward again.\n\nOrange outlines on the workplane show where each new part goes, like in Tinkercad's lessons.",
   },
 ];
 
-const bodySteps = {
-  place: {
-    id: "body-place",
-    title: "Place the body",
-    body: "Open the shapes and drag a Cylinder onto the middle of the workplane, where the orange outline is in the picture.",
-    skill: "Place a shape",
-    figure: { parts: [added(BODY)], caption: "The body stands on the workplane." },
-    // Any shape on the workplane: a new cylinder is small until the next step sizes it.
-    check: (scene) => (solids(scene).some((part) => part.box.minY < 1.5) ? pass() : fail("Drag a Cylinder onto the workplane.")),
-    success: "Your doll has a body.",
-    hint: "The Cylinder is in the basic shapes. Drag it, don't just click it, so it lands where you let go.",
-  } satisfies LessonStep,
-  size: {
-    id: "body-size",
-    title: "Make it doll-sized",
-    body: "Select the cylinder. Type 2.5 in for its width and length, and 4 in for its height.",
-    skill: "Resize by typing",
-    figure: { parts: [added(BODY)], caption: "2.5 in wide, 4 in tall." },
-    check: (scene) => {
-      // The biggest shape on the workplane, before it is tall enough to count as the body.
-      const body = findBody(scene) ?? solids(scene).filter((part) => part.box.minY < 1.5).sort((a, b) => b.w * b.h * b.d - a.w * a.h * a.d)[0];
-      if (!body) return fail("Drag a Cylinder onto the workplane first.");
-      if (!between(body.w, inches(2), inches(3))) return fail(`Make the body between 2 and 3 in wide (it is ${formatInches(body.w)}).`);
-      if (!between(body.h, inches(3.25), inches(4.75))) return fail(`Make the body between 3.25 and 4.75 in tall (it is ${formatInches(body.h)}).`);
-      return pass();
-    },
-    success: "Right size. Typing a size is exact; dragging a handle is quick.",
-    hint: "Click the number next to a handle (or use the size boxes in the shape's card) and type the value.",
-  } satisfies LessonStep,
+/* ---------- body ---------- */
+
+const measureBody: LessonStep = {
+  id: "body-measure",
+  title: "Measure your body",
+  body: "Drag the Ruler from the shapes onto the workplane at a corner of your body. With the body selected, the ruler shows its width, length and height.\n\nYour body should be about 2 1/2 in wide and 4 in tall. If it isn't, click a number on the ruler and type the right one.",
+  skill: "Measure",
+  figure: { parts: [done(BODY), added({ shape: "line", x: 1.6, y: 0, w: 0, h: BODY_H })], caption: "4 in from the workplane to the top." },
+  check: needBody((body) => sizeAdvice("body", body.h, 3.5, 4.5, "about 4 in", "tall") ?? sizeAdvice("body", body.w, 2, 3, "about 2 1/2 in", "wide") ?? pass()),
+  success: "Just right. Your body is the size the rest of the lesson is built on.",
+  hint: PROPORTION_TIP,
 };
+
+const bodyChoices = [
+  {
+    id: "cylinder",
+    label: "Cylinder",
+    blurb: "The classic straight body.",
+    steps: [
+      {
+        id: "body-cylinder-place",
+        title: "Place the cylinder",
+        body: "Open the shapes and drag a Cylinder onto the orange outline in the middle of the workplane.",
+        skill: "Place a shape",
+        figure: { parts: [added(BODY)], caption: "The body stands in the middle of the workplane." },
+        ghost: () => ghostBody(),
+        check: (scene: LessonScene) => (solids(scene).some((part) => part.kind === "cylinder" && part.box.minY < 1.5) ? pass() : fail("Drag a Cylinder onto the workplane.")),
+        hint: "Drag it, don't just click it, so it lands where you let go.",
+      },
+      {
+        id: "body-cylinder-size",
+        title: "Make it doll-sized",
+        body: "Select the cylinder. Make it 2 1/2 in wide, 2 1/2 in long and 4 in tall: click each number on the shape and type the size.",
+        skill: "Resize by typing",
+        figure: { parts: [added(BODY)], caption: "2 1/2 in wide, 4 in tall." },
+        ghost: () => ghostBody(),
+        check: needBody((body) => sizeAdvice("body", body.w, 2, 3, "2 1/2 in", "wide") ?? sizeAdvice("body", body.h, 3.5, 4.5, "4 in", "tall") ?? pass()),
+        hint: "In inches you can type fractions: two and a half can be typed as 2 1/2 or 2.5.",
+      },
+      measureBody,
+    ],
+  },
+  {
+    id: "sphere",
+    label: "Flat-bottomed sphere",
+    blurb: "A round body with its bottom cut flat.",
+    steps: [
+      {
+        id: "body-sphere-place",
+        title: "Place the sphere",
+        body: "Drag a Sphere onto the orange outline. Make it 3 in wide, 3 in long and 4 1/2 in tall, so it is a tall egg.",
+        skill: "Resize by typing",
+        figure: { parts: [added({ shape: "ellipse", x: 0, y: -0.5, w: 3, h: 4.5 })], caption: "A tall egg; the bottom 1/2 in will be cut off." },
+        ghost: () => ghostBody("sphere", 3, 4.5),
+        check: (scene: LessonScene) => {
+          const egg = solids(scene).filter((part) => part.kind === "sphere" || part.kind === "ellipse").sort((a, b) => b.h - a.h)[0];
+          if (!egg) return fail("Drag a Sphere onto the workplane.");
+          return sizeAdvice("sphere", egg.h, 4, 5, "4 1/2 in", "tall") ?? sizeAdvice("sphere", egg.w, 2.5, 3.5, "3 in", "wide") ?? pass();
+        },
+      },
+      {
+        id: "body-sphere-cut",
+        title: "Cut the bottom flat",
+        body: "Drag a Box onto the workplane and make it a Hole. Size it 4 x 4 in and 1/2 in tall. Select the hole and the sphere and use Align to centre them both ways. The hole now covers the bottom of the sphere.",
+        skill: "Hole",
+        figure: { parts: [done({ shape: "ellipse", x: 0, y: 0, w: 3, h: 4.5 }), hole({ shape: "rect", x: 0, y: 0, w: 4, h: 0.5 })], caption: "The grey box cuts off the round bottom." },
+        ghost: (): GhostPart[] => [{ kind: "box", hole: true, x: 0, z: 0, y: 0, w: inches(4), d: inches(4), h: inches(0.5) }],
+        check: (scene: LessonScene) => {
+          const egg = solids(scene).filter((part) => part.kind === "sphere" || part.kind === "ellipse").sort((a, b) => b.h - a.h)[0];
+          if (!egg) return fail("Place the sphere first.");
+          const cutter = holes(scene).find((part) => touches(part, egg) && part.box.maxY < egg.cy && part.w >= egg.w * 0.9);
+          if (!cutter) return fail("Add a Box Hole wider than the sphere across its bottom.");
+          return centred(cutter, egg) ? pass() : fail("Select both and use Align to centre the hole under the sphere.");
+        },
+      },
+      {
+        id: "body-sphere-group",
+        title: "Group and drop",
+        body: "Select the sphere and the hole and press Group. Then use Drop to workplane (right-click the body) so the new flat bottom sits on the workplane.",
+        skill: "Group",
+        check: needBody((body, scene) => {
+          const grouped = holes(scene).some((part) => part.topId === body.topId);
+          if (!grouped) return fail("Select the sphere and the hole and press Group.");
+          const bottom = Math.min(...solids(scene).filter((part) => part.topId === body.topId).map((part) => part.box.minY));
+          return bottom < -inches(0.25) ? pass() : fail("Drop the body to the workplane so its flat cut sits on it.");
+        }),
+        success: "A flat bottom: your doll will stand up.",
+      },
+    ],
+  },
+  {
+    id: "cone",
+    label: "Cone or rounded cone",
+    blurb: "Wide at the bottom, narrow at the top.",
+    steps: [
+      {
+        id: "body-cone-place",
+        title: "Place the cone",
+        body: "For a pointed shape, drag a Cone onto the orange outline. For a softer, rounded shape, use a Curved Cone instead.",
+        skill: "Place a shape",
+        figure: { parts: [added({ shape: "taper", x: 0, y: 0, w: 2.75, h: 4.25, topW: 1.25 })] },
+        ghost: () => ghostBody("cone", 2.75, 4.25),
+        check: (scene: LessonScene) => (solids(scene).some((part) => (part.kind === "cone" || part.kind === "curvedCone" || part.kind === "paraboloid") && part.box.minY < 1.5) ? pass() : fail("Drag a Cone or Curved Cone onto the workplane.")),
+      },
+      {
+        id: "body-cone-size",
+        title: "Size and shape it",
+        body: "Make it 2 3/4 in wide and long and 4 1/4 in tall. In the shape's card, set the top so it is about 1 1/4 in across, wide enough to hold the head. On a Curved Cone, drag the Bend slider to round the sides.",
+        skill: "Resize by typing",
+        figure: { parts: [added({ shape: "taper", x: 0, y: 0, w: 2.75, h: 4.25, topW: 1.25 })], caption: "2 3/4 in at the bottom, about 1 1/4 in at the top." },
+        ghost: () => ghostBody("cone", 2.75, 4.25),
+        check: needBody((body) => sizeAdvice("body", body.w, 2.25, 3.25, "2 3/4 in", "wide") ?? sizeAdvice("body", body.h, 3.5, 4.75, "4 1/4 in", "tall") ?? pass()),
+        hint: "A cone with a sharp point leaves nothing for the head to sit on. Give it a flat top in its card.",
+      },
+      { ...measureBody, id: "body-cone-measure", body: "Drag the Ruler from the shapes onto the workplane at a corner of your body. With the body selected, the ruler shows its width, length and height.\n\nYour cone should be about 2 3/4 in wide and 4 1/4 in tall.", check: needBody((body) => sizeAdvice("body", body.h, 3.5, 4.75, "about 4 1/4 in", "tall") ?? sizeAdvice("body", body.w, 2.25, 3.25, "about 2 3/4 in", "wide") ?? pass()) },
+    ],
+  },
+];
+
+/* ---------- head ---------- */
 
 const headSteps: LessonStep[] = [
   {
     id: "head-place",
     title: "Add the head",
-    body: "Drag a Sphere onto the workplane next to the body. You'll move it up in a moment.",
-    skill: "Stack shapes",
+    body: "Drag a Sphere onto the workplane next to the body.",
+    skill: "Place a shape",
     figure: { parts: [done(BODY), added(HEAD)], caption: "The head goes on top of the body." },
-    check: needHead(() => pass()),
-    hint: "Drag the black arrow above a selected shape to lift it, or type its height above the workplane.",
-  },
-  {
-    id: "head-size",
-    title: "Size it",
-    body: "Make the head about 2.5 in across. Kokeshi heads are big compared with the body.",
-    figure: { parts: [done(BODY), added(HEAD)] },
-    check: needHead((head) => (between(head.w, inches(2), inches(3)) ? pass() : fail("Make the head between 2 and 3 in across."))),
+    check: needAnyHead(() => pass()),
+    hint: "It's fine if it lands beside the body. The next step moves it.",
   },
   {
     id: "head-align",
-    title: "Line it up",
-    body: "Select the head and the body, then use Align to centre them left to right and front to back. Then lower the head until it sinks about 0.15 in into the body.",
+    title: "Align it first",
+    body: "Select the head and the body, open Align, and click the middle dots to centre them left to right and front to back. Then lift the head with the black arrow until it sits on top of the body.\n\nNow that it's on the body, you can see how big the head needs to be.",
     skill: "Align",
-    figure: { parts: [done(BODY), added(HEAD)], caption: "The head overlaps the body a little." },
-    check: needHead((head, body) => {
-      if (Math.abs(head.cx - body.cx) > 0.6 || Math.abs(head.cz - body.cz) > 0.6) return fail("Centre the head over the body with Align.");
-      const overlap = body.box.maxY - head.box.minY;
-      if (overlap < inches(0.05)) return fail("Lower the head so it sinks into the body a little.");
-      if (overlap > inches(0.3)) return fail("The head is sunk too deep. Raise it until only about 0.15 in is inside the body.");
+    figure: { parts: [done(BODY), added(HEAD)] },
+    ghost: ghostHead,
+    check: needAnyHead((head, body) => {
+      if (!centred(head, body)) return fail("Centre the head over the body with Align: click the middle dot for both directions.");
+      if (head.box.minY < body.box.maxY - inches(0.5)) return fail("Lift the head with the black arrow on top of it until it sits on top of the body.");
+      if (head.box.minY > body.box.maxY + inches(0.25)) return fail(`The head floats ${formatInches(head.box.minY - body.box.maxY)} above the body. Lower it until it sits on top.`);
       return pass();
     }),
-    success: "Centred and joined.",
-    hint: "Overlap means the parts print as one piece. A gap means the head falls off.",
+    hint: "Hold Shift and click both shapes to select them, then press Align (or L).",
+  },
+  {
+    id: "head-size",
+    title: "Size the head to fit",
+    body: "Kokeshi heads are big. Turn on Keep proportions in the sphere's card so it stays round, then make it about 2 5/8 in across. It should look a little wider than the body.\n\nResizing moves its centre, so select head and body and Align them again.",
+    skill: "Resize without losing proportion",
+    figure: { parts: [done(BODY), added(HEAD)], caption: "About 2 5/8 in: a little wider than the body." },
+    ghost: ghostHead,
+    check: needAnyHead((head, body) => {
+      const advice = sizeAdvice("head", head.w, 2.375, 3.25, "about 2 5/8 in", "across");
+      if (advice) return advice;
+      if (Math.abs(head.w - head.h) > inches(0.2) || Math.abs(head.w - head.d) > inches(0.2)) return fail(`Your head is ${formatInches(head.w)} wide but ${formatInches(head.h)} tall: it is no longer round. ${PROPORTION_TIP}`);
+      return centred(head, body) ? pass() : fail("Align the head and body again: resizing moved the head's centre.");
+    }),
+    hint: PROPORTION_TIP,
+  },
+  {
+    id: "head-sink",
+    title: "Sink it in a little",
+    body: "Lower the head until about 1/8 in of it goes into the body. Overlapping parts print as one piece; a gap means the head falls off.",
+    skill: "Position by typing",
+    figure: { parts: [done(BODY), added(HEAD)], caption: "1/8 in of the head goes into the body." },
+    ghost: ghostHead,
+    check: needHead((head, body) => {
+      const overlap = body.box.maxY - head.box.minY;
+      if (overlap < inches(1 / 32)) return fail(`The head is ${formatInches(-overlap)} above the body. Lower it so it sinks about 1/8 in in.`);
+      if (overlap > inches(0.375)) return fail(`The head sinks ${formatInches(overlap)} into the body. Raise it so only about 1/8 in is inside.`);
+      return pass();
+    }),
+    hint: "Select the head and type its height above the workplane: the body's height minus 1/8 in (for a 4 in body, 3 7/8 in).",
   },
   {
     id: "head-group",
     title: "Join them",
-    body: "Select the head and the body and press Group.",
+    body: "Select the head and the body and press Group. They are the same colour (the wood), so grouping them is fine.",
     skill: "Group",
     check: needHead((head, body) => (head.topId === body.topId ? pass() : fail("Select both and press Group."))),
     success: "Head and body are one object now.",
   },
 ];
 
+/* ---------- hair ---------- */
+
+const HAIR_EXTRA = 0.25;
+
+/** The hole that hollows the hair: a copy of the head made a Hole, about the head's size. */
+const headHole = (scene: LessonScene, head: Part) => holes(scene).find((part) => (part.kind === "sphere" || part.kind === "ellipse") && Math.abs(part.w - head.w) <= inches(0.2) && touches(part, head));
+
 const bobSteps: LessonStep[] = [
   {
-    id: "bob-dome",
-    title: "Cap the head",
-    body: "Drag a Half sphere over the head and make it a little wider than the head, about 2.75 in. Align it to the head's centre and sink it until it sits like a cap.",
-    skill: "Align",
-    figure: { parts: [...DOLL, added(HAIR)] },
-    check: needHair(() => pass()),
+    id: "bob-place",
+    title: "Copy the head for the hair",
+    body: "Select the head and press Ctrl+D to duplicate it. With Keep proportions on, make the copy 1/4 in bigger than the head (a 2 5/8 in head gets a 2 7/8 in copy). Then select the copy and the head and Align their centres every way. This copy becomes the hair.",
+    skill: "Duplicate",
+    figure: { parts: [...DOLL, added({ shape: "ellipse", x: 0, y: HEAD_Y - 0.125, w: HEAD_W + 0.25, h: HEAD_W + 0.25 })], caption: "The copy is 1/4 in bigger and wraps the head." },
+    ghost: (scene) => onHead(scene, (head) => [{ kind: "sphere", x: head.cx, z: head.cz, y: head.box.minY - inches(HAIR_EXTRA / 2), w: head.w + inches(HAIR_EXTRA), d: head.d + inches(HAIR_EXTRA), h: head.h + inches(HAIR_EXTRA) }]),
+    check: needHair((hair, head) => {
+      const extra = hair.w - head.w;
+      if (extra < inches(0.125)) return fail(`The copy is ${formatInches(hair.w)} across, only ${formatInches(Math.max(0, extra))} bigger than the head. Make it about 1/4 in bigger. ${PROPORTION_TIP}`);
+      if (extra > inches(0.5)) return fail(`The copy is ${formatInches(hair.w)} across, ${formatInches(extra)} bigger than the head. Make it about 1/4 in bigger. ${PROPORTION_TIP}`);
+      return centred(hair, head) ? pass() : fail("Select the copy and the head and Align their centres.");
+    }),
+    hint: "Ctrl+D (Cmd+D on a Mac) makes a copy in the same place.",
   },
   {
-    id: "bob-fringe",
-    title: "Cut the fringe",
-    body: "Add a Box and make it a Hole. Slide it over the front of the hair where the face will be, so only the fringe stays.",
+    id: "bob-lengthen",
+    title: "Stretch the hair down",
+    body: "A bob is longer at the sides and back than at the front. Drag the hair's bottom handle down (or type a bigger height) to stretch it to the length you want, at least down to the chin. The top stays where it is.",
+    skill: "Resize on one axis",
+    figure: { parts: [...DOLL, added(BOB)], caption: "The hair now reaches down to the jaw." },
+    ghost: ghostBob,
+    check: needHair((hair, head) => {
+      if (hair.h < hair.w + inches(0.375)) return fail(`The hair is ${formatInches(hair.w)} wide and ${formatInches(hair.h)} tall. Stretch only its height, downward, until it is at least 3/8 in taller than it is wide.`);
+      if (hair.box.minY > head.cy - inches(0.5)) return fail(`The hair ends ${formatInches(hair.box.minY - head.box.minY)} above the bottom of the head. Stretch it further down, at least to the chin.`);
+      if (hair.box.maxY < head.box.maxY) return fail("Keep the top of the hair above the top of the head.");
+      return pass();
+    }),
+    hint: "Stretch only the height: don't turn on Keep proportions for this one.",
+  },
+  {
+    id: "bob-bangs",
+    title: "Cut the bangs",
+    body: "Drag a Box onto the workplane and make it a Hole. Make it 1 7/8 in wide, 1 1/4 in deep and 1 3/8 in tall. Move it to the front of the face (on the grey outline) so its top is at eyebrow height. It will cut the face free and leave the bangs above.",
     skill: "Hole",
-    figure: { parts: [...DOLL, done(HAIR), hole({ shape: "rect", x: 0, y: 4.2, w: 1.9, h: 1.1 })], caption: "The grey box cuts the hair away from the face." },
-    check: needHair((hair, _head, scene) => (holes(scene).some((part) => touches(part, hair)) ? pass() : fail("Add a Box, set it to Hole, and move it into the front of the hair."))),
-    hint: "Select the box, then pick Hole in the shape's card. It turns see-through grey.",
+    figure: { parts: [...DOLL, done(BOB), hole(BANGS)], caption: "The grey box cuts the hair away from the face." },
+    ghost: ghostBangs,
+    check: needHair((hair, head, scene) => (holes(scene).some((part) => part.kind === "box" && touches(part, hair) && part.cz > head.cz) ? pass() : fail("Add a Box Hole at the front of the hair, over the face."))),
+    hint: "The front of the doll faces the FRONT side of the view cube.",
+  },
+  {
+    id: "bob-feather",
+    title: "Feather the bangs",
+    body: "Drag a Wedge (the triangle shape) and make it a Hole, about 3/8 in wide. Turn it point up and place it along the bottom edge of the bangs so it cuts a small notch. Duplicate it (Ctrl+D) and move each copy along the edge for a feathered look.",
+    skill: "Duplicate",
+    figure: { parts: [...DOLL, done(BOB), hole(BANGS), hole({ shape: "tri", x: -0.5, y: HEAD_Y + 1.6, w: 0.375, h: 0.35 }), hole({ shape: "tri", x: 0, y: HEAD_Y + 1.6, w: 0.375, h: 0.35 }), hole({ shape: "tri", x: 0.5, y: HEAD_Y + 1.6, w: 0.375, h: 0.35 })] },
+    check: needHair((hair, _head, scene) => (holes(scene).some((part) => part.kind === "wedge" && touches(part, hair, 1)) ? pass() : fail("Add a Wedge Hole along the edge of the bangs."))),
+  },
+  {
+    id: "bob-hollow",
+    title: "Hollow the hair",
+    body: "Select the head and duplicate it again (Ctrl+D). Make this copy a Hole. Leave it the head's size and Align it to the head's centre, so it sits inside the hair. When you group, it scoops the inside of the hair out, so the hair fits over the head like a wig.",
+    skill: "Hole",
+    figure: { parts: [...DOLL, done(BOB), hole(HEAD)], caption: "A head-sized hole inside the hair." },
+    ghost: (scene) => onHead(scene, (head) => [{ kind: "sphere", hole: true, x: head.cx, z: head.cz, y: head.box.minY, w: head.w, d: head.d, h: head.h }]),
+    check: needHair((_hair, head, scene) => {
+      const scoop = headHole(scene, head);
+      if (!scoop) return fail("Duplicate the head and make the copy a Hole, the same size as the head.");
+      return centred(scoop, head) && Math.abs(scoop.cy - head.cy) <= 1 ? pass() : fail("Align the hole to the head's centre every way.");
+    }),
+  },
+  {
+    id: "bob-fit",
+    title: "Fit it to the head",
+    body: "Look at the doll from the front and the side. Use the hair's card (its width, length and height) to make the hair hug the head with no big gap, about 1/8 in bigger than the head on each side.",
+    skill: "Properties panel",
+    check: needHair((hair, head) => (touches(hair, head) && hair.w <= head.w + inches(0.6) ? pass() : fail(`The hair is ${formatInches(hair.w)} across and the head ${formatInches(head.w)}. Keep the hair no more than about 1/4 in bigger on each side.`))),
   },
   {
     id: "bob-group",
-    title: "Group to cut",
-    body: "Select the hair and the hole and press Group. The hole cuts away the face.",
+    title: "Align and group the hair",
+    body: "Select the hair and all its holes (the bangs box, the wedges and the head-sized hole), but not the head itself. Align them to the head's centre left to right, then press Group. The holes cut the hair: bangs at the front, hollow inside.",
     skill: "Group",
-    check: needHair((hair, _head, scene) => (holes(scene).some((part) => part.topId === hair.topId) ? pass() : fail("Select the hair and the hole together and press Group."))),
-    success: "A hole only cuts once it is grouped with the shape it cuts.",
+    check: needHair((hair, head, scene) => {
+      const grouped = holes(scene).filter((part) => part.topId === hair.topId);
+      if (!grouped.length) return fail("Select the hair and its holes and press Group.");
+      if (head.topId === hair.topId) return fail("The head is in the hair's group. Undo, and select only the hair and its holes.");
+      return pass();
+    }),
+    success: "A bob: longer at the back and sides, bangs at the front, hollow inside.",
   },
 ];
 
 const bunStep: LessonStep = {
   id: "bun",
   title: "Add the bun",
-  body: "Put a small Sphere, about 0.9 in, on top of the hair. Align it to the centre and sink it a little into the hair.",
+  body: "Put a Sphere about 7/8 in across on top of the hair. Align it to the head's centre both ways, then lower it a little into the hair.",
   skill: "Align",
-  figure: { parts: [...DOLL, done(HAIR), added({ shape: "ellipse", x: 0, y: 6.2, w: 0.9, h: 0.9 })] },
+  figure: { parts: [...DOLL, done(BOB), added({ shape: "ellipse", x: 0, y: HEAD_Y + HEAD_W - 0.1, w: 0.875, h: 0.875 })] },
+  ghost: (scene) => onHead(scene, (head) => [{ kind: "sphere", x: head.cx, z: head.cz, y: head.box.maxY - inches(0.1), w: inches(0.875), d: inches(0.875), h: inches(0.875) }]),
   check: needHair((hair, head, scene) => {
     const bun = solids(scene).find((part) => part !== hair && part !== head && between(part.w, inches(0.5), inches(1.3)) && part.cy > head.box.maxY - inches(0.2) && touches(part, hair));
-    return bun ? pass() : fail("Add a sphere 0.5 to 1.3 in across on top of the hair, touching it.");
+    if (!bun) return fail("Add a sphere 1/2 to 1 1/4 in across on top of the hair, touching it.");
+    return centred(bun, head) ? pass() : fail("Align the bun to the centre of the head.");
   }),
   didYouKnow: "A thin Torus around the bun makes a hair tie.",
 };
@@ -238,80 +492,96 @@ const pigtailSteps: LessonStep[] = [
   {
     id: "pigtail-one",
     title: "One pigtail",
-    body: "Stretch a Sphere into an egg shape (about 0.8 x 0.8 x 1.4 in) and place it on one side of the hair. Turn it about 20 degrees so it hangs outward.",
+    body: "Stretch a Sphere into an egg (about 3/4 x 3/4 x 1 3/8 in) and place it against one side of the hair. Turn it about 20 degrees so it hangs outward.",
     skill: "Rotate",
-    figure: { parts: [...DOLL, done(HAIR), added({ shape: "ellipse", x: -1.55, y: 4.2, w: 0.8, h: 1.4, tilt: 20 })] },
+    figure: { parts: [...DOLL, done(BOB), added({ shape: "ellipse", x: -1.6, y: HEAD_Y + 0.6, w: 0.75, h: 1.375, tilt: 20 })] },
+    ghost: (scene) => onHead(scene, (head) => [{ kind: "sphere", x: head.cx - inches(1.6), z: head.cz, y: head.box.minY + inches(0.6), w: inches(0.75), d: inches(0.75), h: inches(1.375) }]),
     check: needHair((hair, head, scene) => (extras(scene).some((part) => part !== hair && touches(part, hair) && Math.abs(part.cx - head.cx) > head.w * 0.35) ? pass() : fail("Place a pigtail on one side of the hair, touching it."))),
   },
   {
     id: "pigtail-mirror",
     title: "Mirror the other",
-    body: "Duplicate the pigtail (Ctrl+D), use Mirror to flip it left to right, and move it to the other side so both match.",
+    body: "Duplicate the pigtail (Ctrl+D), use Mirror to flip it left to right, and move it to the other side. Then select both pigtails and the head and Align them top to bottom so they match.",
     skill: "Mirror",
-    figure: { parts: [...DOLL, done(HAIR), done({ shape: "ellipse", x: -1.55, y: 4.2, w: 0.8, h: 1.4, tilt: 20 }), added({ shape: "ellipse", x: 1.55, y: 4.2, w: 0.8, h: 1.4, tilt: -20 })] },
+    figure: { parts: [...DOLL, done(BOB), done({ shape: "ellipse", x: -1.6, y: HEAD_Y + 0.6, w: 0.75, h: 1.375, tilt: 20 }), added({ shape: "ellipse", x: 1.6, y: HEAD_Y + 0.6, w: 0.75, h: 1.375, tilt: -20 })] },
     check: needHair((hair, head, scene) => (mirroredPair(extras(scene).filter((part) => part !== hair && touches(part, hair)), head.cx, 1.5) ? pass() : fail("Make the two pigtails the same size and the same distance from the middle."))),
     didYouKnow: "Mirror guarantees both sides match exactly. Placing by hand never quite does.",
   },
 ];
 
+const HELMET: FigurePart = { shape: "dome", x: 0, y: HEAD_Y + 1.25, w: 2.9, h: 1.45 };
+const BRIM: FigurePart = { shape: "rect", x: 0, y: HEAD_Y + 1.2, w: 3.4, h: 0.15 };
+
 const helmetSteps: LessonStep[] = [
   {
     id: "helmet-bowl",
     title: "The helmet bowl",
-    body: "A Half sphere about 2.9 in across goes over the head like a bowl. Align it to the head's centre.",
+    body: "Drag a Half Sphere about 2 7/8 in across onto the workplane. Align it to the head's centre both ways and lift it so it sits over the top half of the head like a bowl.",
     skill: "Align",
-    figure: { parts: [...DOLL, added({ shape: "dome", x: 0, y: 4.95, w: 2.9, h: 1.5 })] },
-    check: needHair(() => pass()),
+    figure: { parts: [...DOLL, added(HELMET)] },
+    ghost: (scene) => onHead(scene, (head) => [{ kind: "halfSphere", x: head.cx, z: head.cz, y: head.cy - inches(0.1), w: inches(2.875), d: inches(2.875), h: inches(1.45) }]),
+    check: needHair((helmet, head) => (centred(helmet, head) ? pass() : fail("Align the helmet to the centre of the head."))),
   },
   {
     id: "helmet-brim",
     title: "The brim",
-    body: "A flattened Cylinder (or a Torus) about 3.4 in across and 0.15 in thick goes around the bottom of the bowl.",
+    body: "A Cylinder 3 3/8 in across and 1/8 in thick goes around the bottom of the bowl. Align it to the bowl's centre.",
     skill: "Resize by typing",
-    figure: { parts: [...DOLL, done({ shape: "dome", x: 0, y: 4.95, w: 2.9, h: 1.5 }), added({ shape: "rect", x: 0, y: 4.9, w: 3.4, h: 0.15 })] },
-    check: needHair((helmet, _head, scene) => (solids(scene).some((part) => part !== helmet && part.w > helmet.w && part.h < inches(0.45) && touches(part, helmet)) ? pass() : fail("Add a flat brim wider than the helmet, touching it."))),
+    figure: { parts: [...DOLL, done(HELMET), added(BRIM)] },
+    ghost: (scene) => onHead(scene, (head) => [{ kind: "cylinder", x: head.cx, z: head.cz, y: head.cy - inches(0.15), w: inches(3.375), d: inches(3.375), h: inches(0.125) }]),
+    check: needHair((helmet, _head, scene) => {
+      const brim = solids(scene).find((part) => part !== helmet && part.w > helmet.w && part.h < inches(0.45) && touches(part, helmet));
+      if (!brim) return fail("Add a flat Cylinder brim wider than the helmet, touching it.");
+      return centred(brim, helmet) ? pass() : fail("Align the brim to the centre of the helmet.");
+    }),
   },
   {
     id: "helmet-crest",
     title: "The crest",
-    body: "Stand a Crescent up on the front of the helmet. Turn it so its points face up, like horns.",
+    body: "Stand a Crescent up on the front of the helmet, about 1 3/4 in wide. Turn it so its points face up, like horns, and Align it to the middle left to right.",
     skill: "Rotate",
-    figure: { parts: [...DOLL, done({ shape: "dome", x: 0, y: 4.95, w: 2.9, h: 1.5 }), done({ shape: "rect", x: 0, y: 4.9, w: 3.4, h: 0.15 }), added({ shape: "crescent", x: 0, y: 6.1, w: 1.8, h: 0.9 })] },
+    figure: { parts: [...DOLL, done(HELMET), done(BRIM), added({ shape: "crescent", x: 0, y: HEAD_Y + 2.4, w: 1.75, h: 0.9 })] },
     check: needHair((helmet, _head, scene) => (solids(scene).some((part) => part.kind === "crescent" && touches(part, helmet)) ? pass() : fail("Add a Crescent touching the front of the helmet."))),
     didYouKnow: "A samurai helmet's crest showed who the wearer was.",
   },
   {
     id: "helmet-guards",
     title: "Neck guards",
-    body: "Put a Wedge on one side at the back of the helmet as a neck guard, then Duplicate and Mirror it for the other side.",
+    body: "Put a Wedge on one side at the back of the helmet as a neck guard. Duplicate it, Mirror it, and move it to the other side.",
     skill: "Mirror",
     check: needHair((helmet, head, scene) => (mirroredPair(solids(scene).filter((part) => part.kind === "wedge" && touches(part, helmet, 1)), head.cx, 1.5) ? pass() : fail("Add two matching Wedges, one each side, touching the helmet."))),
   },
 ];
 
+/* ---------- kimono ---------- */
+
+const SLEEVE_L: FigurePart = { shape: "ellipse", x: -0.95, y: 1.6, w: 0.9, h: 2.6, tilt: -25 };
+const SLEEVE_R: FigurePart = { ...SLEEVE_L, x: 0.95, tilt: 25 };
+
 const sleeveSteps: LessonStep[] = [
   {
     id: "sleeve-one",
     title: "One sleeve",
-    body: "Kimono sleeves sweep down from the shoulders and meet in front. Stretch a Sphere into a long egg (about 0.9 x 0.9 x 3 in). Tilt it down and forward so it runs from the shoulder to the front of the body.",
+    body: "Kimono sleeves sweep down from the shoulders and meet in front. Stretch a Sphere into a long egg (about 7/8 x 7/8 x 3 in). Turn it twice: once to slant it toward the front, once to lean it in toward the middle, so it runs from the shoulder down to the front of the body.",
     skill: "Rotate on two axes",
-    figure: { parts: [...DRESSED, added({ shape: "ellipse", x: -0.95, y: 1.6, w: 0.9, h: 2.6, tilt: -25 })], caption: "Seen from the front: the sleeve slants in toward the middle." },
+    figure: { parts: [...DRESSED, added(SLEEVE_L)], caption: "Seen from the front: the sleeve slants in toward the middle." },
     check: needBody((body, scene) => (extras(scene).some((part) => elongated(part) && touches(part, body)) ? pass() : fail("Add a long stretched shape touching the side of the body."))),
-    hint: "Turn it with the curved arrows: once to slant it toward the front, once to lean it in toward the middle.",
+    hint: "Use the curved arrows around a selected shape to turn it.",
   },
   {
     id: "sleeve-mirror",
     title: "Mirror the other sleeve",
-    body: "Duplicate the sleeve, Mirror it left to right, and place it on the other shoulder so the two sleeve ends meet in front.",
+    body: "Duplicate the sleeve, Mirror it left to right, and place it on the other shoulder so the two sleeve ends meet in front. Align both sleeves top to bottom so they match.",
     skill: "Mirror",
-    figure: { parts: [...DRESSED, done({ shape: "ellipse", x: -0.95, y: 1.6, w: 0.9, h: 2.6, tilt: -25 }), added({ shape: "ellipse", x: 0.95, y: 1.6, w: 0.9, h: 2.6, tilt: 25 })] },
+    figure: { parts: [...DRESSED, done(SLEEVE_L), added(SLEEVE_R)] },
     check: needBody((body, scene) => (mirroredPair(extras(scene).filter((part) => elongated(part) && touches(part, body)), body.cx, 2) ? pass() : fail("Make the second sleeve a mirror image of the first."))),
   },
   {
     id: "sleeve-hands",
     title: "Hidden or cupped hands?",
-    body: "Hidden hands: slide the sleeve ends together until they overlap in front, as if the hands are tucked inside.\n\nCupped hands: leave a small gap between the sleeve ends and put two small flattened Spheres there as hands. Cut a little Half sphere Hole into them to cup them.",
+    body: "Hidden hands: slide the sleeve ends together until they overlap in front, as if the hands are tucked inside.\n\nCupped hands: leave a small gap between the sleeve ends and put two small flattened Spheres (about 1/2 in) there as hands. Cut a little Half Sphere Hole into them to cup them.",
     skill: "Hole",
+    figure: { parts: [...DRESSED, done(SLEEVE_L), done(SLEEVE_R), added({ shape: "ellipse", x: 0, y: 0.55, w: 0.5, h: 0.35 })] },
     check: printable,
     didYouKnow: "Long swinging sleeves, called furisode, were worn by young women for celebrations.",
   },
@@ -321,7 +591,7 @@ const sashSteps: LessonStep[] = [
   {
     id: "sash-cord",
     title: "The cord",
-    body: "Wrap a thin cord around the middle of the obi: a Torus about 0.08 in thick, a little wider than the obi.",
+    body: "Wrap a thin cord around the middle of the obi: a Torus about 1/16 in thick, a little wider than the obi. Align it to the obi's centre.",
     skill: "Align",
     check: needBody((_body, scene) => {
       const obi = findObi(scene);
@@ -332,8 +602,9 @@ const sashSteps: LessonStep[] = [
   {
     id: "sash-bow",
     title: "The bow and tails",
-    body: "At the back of the obi, build a bow: two Ellipses tilted outward (make the second with Mirror) and a small Sphere for the knot. Add two thin Boxes hanging down as the sash tails.",
+    body: "At the back of the obi, build a bow: two Ellipses tilted outward (make the second with Mirror) and a small Sphere for the knot. Add two thin Boxes hanging down as the sash tails. Align the bow to the middle of the back.",
     skill: "Mirror",
+    figure: { parts: [...DRESSED, added({ shape: "ellipse", x: -0.45, y: 1.9, w: 0.8, h: 0.5, tilt: -15 }), added({ shape: "ellipse", x: 0.45, y: 1.9, w: 0.8, h: 0.5, tilt: 15 }), added({ shape: "rect", x: -0.15, y: 0.9, w: 0.2, h: 1 }), added({ shape: "rect", x: 0.15, y: 0.9, w: 0.2, h: 1 })], caption: "Seen from the back." },
     check: needBody((body, scene) => {
       const obi = findObi(scene);
       if (!obi) return fail("Tie the obi first.");
@@ -342,55 +613,172 @@ const sashSteps: LessonStep[] = [
   },
 ];
 
+/* ---------- accessories ---------- */
+
+const accessoryTouches = (what: string): StepCheck => (scene) => {
+  const floating = floatingObjects(scene);
+  if (floating.length) return fail(`${floating.length === 1 ? "A part" : `${floating.length} parts`} of the ${what} ${floating.length === 1 ? "is" : "are"} not touching the doll. Move ${floating.length === 1 ? "it" : "them"} until ${floating.length === 1 ? "it touches" : "they touch"}.`);
+  return connectedAndPrintable(scene);
+};
+
+const fanSteps: LessonStep[] = [
+  {
+    id: "fan-leaf",
+    title: "The fan leaf",
+    body: "Drag a Cylinder and make it 2 in across and 1/16 in thick. Stand it up on its edge by turning it 90 degrees. Add a Box Hole over its bottom half and Group, so a half circle is left.",
+    skill: "Hole",
+    figure: { parts: [added({ shape: "dome", x: 0, y: 1, w: 2, h: 1 }), hole({ shape: "rect", x: 0, y: 0, w: 2.2, h: 1 })], caption: "A half circle, standing up." },
+    check: (scene) => (solids(scene).some((part) => part.kind === "cylinder" && Math.min(part.shape.width, part.shape.depth, part.shape.height) < inches(0.15)) ? pass() : fail("Make a thin Cylinder, 1/16 in thick, standing on its edge.")),
+  },
+  {
+    id: "fan-ribs",
+    title: "Ribs",
+    body: "Make one thin Box rib (1/16 x 1/16 x 1 in) from the bottom middle of the fan to its edge. Use Pattern, around a circle, with 7 copies spread over half a turn, so the ribs fan out.",
+    skill: "Circular pattern",
+    figure: { parts: [done({ shape: "dome", x: 0, y: 1, w: 2, h: 1 }), added({ shape: "rect", x: 0, y: 1, w: 0.06, h: 1, tilt: -60 }), added({ shape: "rect", x: 0, y: 1, w: 0.06, h: 1, tilt: -30 }), added({ shape: "rect", x: 0, y: 1, w: 0.06, h: 1 }), added({ shape: "rect", x: 0, y: 1, w: 0.06, h: 1, tilt: 30 }), added({ shape: "rect", x: 0, y: 1, w: 0.06, h: 1, tilt: 60 })] },
+    check: (scene) => (sameSizeCount(smallThin(scene, 0.15, 1.25)) >= 5 ? pass() : fail("Make one thin Box rib and Pattern it into at least 5 matching ribs.")),
+  },
+  {
+    id: "fan-hold",
+    title: "Put it in the hands",
+    body: "Group the fan, then move it so its bottom point rests where the sleeves meet (or against the body). Tilt it a little so it leans on the doll and doesn't stick out.",
+    skill: "Group",
+    check: accessoryTouches("fan"),
+    success: "The fan touches the doll and is thick enough to print.",
+  },
+];
+
+const swordSteps: LessonStep[] = [
+  {
+    id: "sword-blade",
+    title: "The blade",
+    body: "A Box 1/8 in wide, 1/16 in thick and 3 in long. Turn it a few degrees so it has a slight curve-like slant, like a katana.",
+    skill: "Resize by typing",
+    figure: { parts: [added({ shape: "rect", x: 0, y: 1.2, w: 0.125, h: 3, tilt: 4 })] },
+    check: (scene) => (solids(scene).some((part) => elongated(part) && Math.max(part.shape.width, part.shape.depth, part.shape.height) >= inches(2)) ? pass() : fail("Make a long thin Box, about 3 in long.")),
+  },
+  {
+    id: "sword-guard",
+    title: "Guard and handle",
+    body: "Add a flat Cylinder (1/2 in across, 1/16 in thick) where the blade ends as the guard, and a Cylinder 3/16 in across and 1 in long as the handle. Align all three to the blade's centre line and Group them.",
+    skill: "Align",
+    figure: { parts: [done({ shape: "rect", x: 0, y: 1.2, w: 0.125, h: 3 }), added({ shape: "ellipse", x: 0, y: 1.15, w: 0.5, h: 0.1 }), added({ shape: "rect", x: 0, y: 0.15, w: 0.19, h: 1 })], caption: "Blade, guard and handle on one line." },
+    check: (scene) => {
+      const blade = solids(scene).find((part) => elongated(part) && ownSizes(part)[2] >= inches(2) && ownSizes(part)[0] <= inches(0.25));
+      if (!blade) return fail("Make the blade first: a long thin Box, about 3 in long.");
+      const held = solids(scene).filter((part) => part !== blade && part.topId === blade.topId);
+      if (held.length < 2) return fail("Add the guard and the handle, then select all three and Group them.");
+      return pass();
+    },
+  },
+  {
+    id: "sword-lean",
+    title: "Lean it on the doll",
+    body: "Stand the sword on the workplane next to the doll and tilt it so it leans against the body or a sleeve, touching in two places.",
+    skill: "Rotate",
+    hint: "A sword that sticks out sideways snaps off when printed. Lean it on the body.",
+    check: accessoryTouches("sword"),
+    success: "The sword leans on the doll and will print standing up.",
+  },
+];
+
+const umbrellaSteps: LessonStep[] = [
+  {
+    id: "umbrella-canopy",
+    title: "The canopy",
+    body: "A Half Sphere 3 in across and 1 in tall. Hollow it with a 1/16 in wall, open at the bottom.",
+    skill: "Hollow",
+    figure: { parts: [added({ shape: "dome", x: 0, y: 3, w: 3, h: 1 })] },
+    check: (scene) => (solids(scene).some((part) => part.kind === "halfSphere" && isHollowed(part)) ? pass() : fail("Hollow a Half Sphere with a thin wall, open at the bottom.")),
+  },
+  {
+    id: "umbrella-ribs",
+    title: "Ribs and handle",
+    body: "Add a thin Cylinder (1/8 in across, 3 1/4 in long) under the middle of the canopy as the handle, and a small Sphere on top as the tip. For ribs, make one thin Box under the canopy and Pattern it around the centre, 8 copies.",
+    skill: "Circular pattern",
+    figure: { parts: [done({ shape: "dome", x: 0, y: 3, w: 3, h: 1 }), added({ shape: "rect", x: 0, y: 0, w: 0.125, h: 3.25 }), added({ shape: "ellipse", x: 0, y: 3.95, w: 0.2, h: 0.2 })] },
+    check: (scene) => {
+      const canopy = solids(scene).find((part) => part.kind === "halfSphere" && isHollowed(part));
+      if (!canopy) return fail("Make the hollow canopy first.");
+      const handle = solids(scene).find((part) => part !== canopy && elongated(part) && ownSizes(part)[2] >= inches(2) && touches(part, canopy));
+      return handle ? pass() : fail("Add a long thin Cylinder handle under the middle of the canopy, touching it.");
+    },
+  },
+  {
+    id: "umbrella-hold",
+    title: "Over the shoulder",
+    body: "Group the umbrella and tilt it so the handle rests in the hands or against the body, with the canopy behind the head. Make sure it touches the doll.",
+    skill: "Rotate",
+    check: accessoryTouches("umbrella"),
+  },
+];
+
+const flowerSteps: LessonStep[] = [
+  {
+    id: "flower-petal",
+    title: "One petal",
+    body: "Stretch a Sphere into a flat petal: 3/8 in wide, 3/4 in long, 1/8 in thick. Place it so one end touches the middle of where the flower will be.",
+    skill: "Resize on one axis",
+    figure: { parts: [added({ shape: "ellipse", x: 0, y: 0.4, w: 0.375, h: 0.75 })] },
+    check: (scene) => (smallThin(scene, 0.2, 1).some((part) => part.kind === "sphere" || part.kind === "ellipse") ? pass() : fail("Squash a Sphere into a petal: about 3/8 in wide, 3/4 in long and 1/8 in thick.")),
+  },
+  {
+    id: "flower-pattern",
+    title: "Five petals",
+    body: "Use Pattern around a circle with 5 copies so the petals spread evenly. Add a small Sphere (1/4 in) in the middle as the centre and Group.",
+    skill: "Circular pattern",
+    figure: { parts: [added({ shape: "ellipse", x: 0, y: 0.4, w: 0.375, h: 0.75 }), added({ shape: "ellipse", x: 0.38, y: 0.12, w: 0.375, h: 0.75, tilt: 72 }), added({ shape: "ellipse", x: -0.38, y: 0.12, w: 0.375, h: 0.75, tilt: -72 }), added({ shape: "ellipse", x: 0.24, y: -0.35, w: 0.375, h: 0.75, tilt: 144 }), added({ shape: "ellipse", x: -0.24, y: -0.35, w: 0.375, h: 0.75, tilt: -144 }), done({ shape: "ellipse", x: 0, y: 0.25, w: 0.25, h: 0.25 })], caption: "Pattern spaces the petals evenly." },
+    check: (scene) => (sameSizeCount(smallThin(scene, 0.2, 1).filter((part) => part.kind === "sphere" || part.kind === "ellipse")) >= 5 ? pass() : fail("Pattern the petal around a circle so there are 5 matching petals.")),
+  },
+  {
+    id: "flower-place",
+    title: "Hold or wear it",
+    body: "Place the flower in the hands where the sleeves meet, or in the hair beside the bangs. It must touch the doll.",
+    check: accessoryTouches("flower"),
+  },
+];
+
+const ornamentSteps: LessonStep[] = [
+  {
+    id: "ornament-pin",
+    title: "A hair pin",
+    body: "A thin Cylinder (1/8 in across, 1 1/2 in long) with a small Sphere (1/4 in) on one end. Group them.",
+    skill: "Group",
+    figure: { parts: [added({ shape: "rect", x: 0, y: 0, w: 0.125, h: 1.5, tilt: 30 }), added({ shape: "ellipse", x: 0.4, y: 1.2, w: 0.25, h: 0.25 })] },
+    check: (scene) => {
+      const pin = solids(scene).find((part) => part.kind === "cylinder" && elongated(part) && ownSizes(part)[0] <= inches(0.25) && ownSizes(part)[2] >= inches(1));
+      if (!pin) return fail("Make a thin Cylinder pin, 1/8 in across and 1 1/2 in long.");
+      const bead = solids(scene).find((part) => part !== pin && (part.kind === "sphere" || part.kind === "ellipse") && part.w <= inches(0.5) && touches(part, pin));
+      if (!bead) return fail("Put a small Sphere (1/4 in) on one end of the pin.");
+      return bead.topId === pin.topId ? pass() : fail("Select the pin and the bead and Group them.");
+    },
+  },
+  {
+    id: "ornament-place",
+    title: "Into the hair",
+    body: "Push the pin into the side of the hair at an angle so about half of it is inside the hair. Add a second pin with Duplicate and Mirror if you like.",
+    skill: "Rotate",
+    check: accessoryTouches("hair pin"),
+  },
+];
+
+/* ---------- the lesson ---------- */
+
 const kokeshi: Lesson = {
   id: "kokeshi",
   title: "Kokeshi Maker",
   subtitle: "Design and 3D print your own kokeshi doll",
   units: "Imperial",
   sections: [
-    { id: "welcome", title: "Welcome", goal: "Learn what a kokeshi is and how to move around.", skills: ["Navigate the view", "Undo"], steps: welcome, guidedOnly: true },
+    { id: "welcome", title: "Welcome", goal: "Learn what a kokeshi is, see your choices, and name your design.", skills: [], steps: welcome, guidedOnly: true },
     {
       id: "body",
       title: "Body",
-      goal: "Give your doll a body about 2.5 in wide and 4 in tall, standing on the workplane.",
-      skills: ["Place a shape", "Resize by typing", "Taper", "Sketch", "Revolve"],
-      steps: [bodySteps.place, bodySteps.size],
-      choices: [
-        { id: "classic", label: "Classic", blurb: "A straight round body.", steps: [] },
-        {
-          id: "tapered",
-          label: "Tapered",
-          blurb: "Narrower at the shoulders.",
-          steps: [{
-            id: "body-taper",
-            title: "Taper it",
-            body: "With the body selected, open Taper in the shape's card and make the top about 1.9 in across.",
-            skill: "Taper",
-            figure: { parts: [added({ shape: "taper", x: 0, y: 0, w: 2.5, h: 4, topW: 1.9 })] },
-            check: needBody((body) => {
-              const shape = body.shape;
-              const top = shape.taperTopWidth ?? (shape.taperTopScale !== undefined ? shape.taperTopScale * shape.width : shape.width);
-              return top < shape.width - 1 || shape.kind === "cone" || shape.kind === "curvedCone" ? pass() : fail("Make the top of the body narrower than the bottom.");
-            }),
-          }],
-        },
-        {
-          id: "curvy",
-          label: "Curvy",
-          blurb: "Draw the side outline and spin it.",
-          steps: [{
-            id: "body-revolve",
-            title: "Draw and spin the body",
-            body: "Delete the cylinder. Start a Sketch on the workplane and draw half of the body's side outline: a straight centre line, then a curve in at the waist and out at the hips. Then Revolve it around the centre line.",
-            skill: "Sketch and Revolve",
-            figure: { parts: [added({ shape: "line", x: 0, y: 0, w: 0, h: 4 }), added({ shape: "rect", x: 0.6, y: 0, w: 1.2, h: 4 })], caption: "Draw the right half; Revolve spins it into a full body." },
-            check: needBody((body) => (body.kind !== "cylinder" && between(body.w, inches(2), inches(3)) ? pass() : fail("Revolve a half-outline into a body 2 to 3 in wide."))),
-            didYouKnow: "Kokeshi bodies are turned on a lathe, which spins the wood while a blade shapes it. Revolve does the same thing in CAD.",
-          }],
-        },
-      ],
+      goal: "Give your doll a body about 2 1/2 in wide and 4 in tall, standing on the workplane.",
+      skills: ["Place a shape", "Resize by typing", "Hole", "Group", "Measure"],
+      choices: bodyChoices,
       ownWayChecks: [
-        { label: "A body at least 1.5 in tall stands on the workplane", check: needBody(() => pass()) },
+        { label: "A body at least 1 1/2 in tall stands on the workplane", check: (scene) => (findBody(scene) ? pass() : fail("Make a body at least 1 1/2 in tall, standing on the workplane.")) },
         { label: "It will print", check: printable },
       ],
     },
@@ -398,10 +786,11 @@ const kokeshi: Lesson = {
       id: "head",
       title: "Head",
       goal: "Put a big round head on the body, centred and joined to it.",
-      skills: ["Stack shapes", "Align", "Group"],
+      skills: ["Align", "Resize without losing proportion", "Group"],
       steps: headSteps,
       ownWayChecks: [
         { label: "A round head sits on the body", check: needHead((head, body) => (touches(head, body) ? pass() : fail("The head must touch the body."))) },
+        { label: "It is centred over the body", check: needHead((head, body) => (centred(head, body) ? pass() : fail("Use Align to centre it."))) },
         { label: "It will print", check: printable },
       ],
     },
@@ -409,15 +798,16 @@ const kokeshi: Lesson = {
       id: "hair",
       title: "Hair or helmet",
       goal: "Give your doll hair or a helmet that covers the top of the head.",
-      skills: ["Hole", "Group", "Mirror", "Rotate", "Align"],
+      skills: ["Align", "Resize on one axis", "Hollow", "Hole", "Group", "Mirror", "Rotate"],
       choices: [
-        { id: "bob", label: "Bob", blurb: "A rounded cap with a fringe.", steps: bobSteps },
-        { id: "bun", label: "Bun", blurb: "A bob with a bun on top.", steps: [...bobSteps, bunStep] },
-        { id: "pigtails", label: "Pigtails", blurb: "A bob with two matching tails.", steps: [...bobSteps, ...pigtailSteps] },
+        { id: "bob", label: "Bob", blurb: "Longer at the sides and back, with bangs.", steps: bobSteps },
+        { id: "bun", label: "Bob with a bun", blurb: "A bob with a bun on top.", steps: [...bobSteps, bunStep] },
+        { id: "pigtails", label: "Bob with pigtails", blurb: "A bob with two matching tails.", steps: [...bobSteps, ...pigtailSteps] },
         { id: "helmet", label: "Helmet", blurb: "A samurai-style helmet with a crest.", steps: helmetSteps },
       ],
       ownWayChecks: [
         { label: "Hair or a helmet covers the top of the head", check: needHair(() => pass()) },
+        { label: "It is centred on the head", check: needHair((hair, head) => (centred(hair, head) ? pass() : fail("Use Align to centre it."))) },
         { label: "It will print", check: printable },
       ],
     },
@@ -425,14 +815,19 @@ const kokeshi: Lesson = {
       id: "kimono",
       title: "Kimono",
       goal: "Tie an obi around the body, then add sleeves, a sash or details.",
-      skills: ["Hole", "Align", "Stretch on one axis", "Rotate on two axes", "Mirror", "Circular pattern", "Wrap around a cylinder"],
+      skills: ["Hole", "Align", "Resize on one axis", "Rotate on two axes", "Mirror", "Circular pattern", "Wrap around a cylinder"],
       steps: [{
         id: "obi",
         title: "Tie the obi",
-        body: "Make a ring: a Cylinder about 2.75 in across and 0.5 in tall, with a slightly smaller Cylinder Hole inside it, grouped. Slide it around the middle of the body.",
+        body: "Make a ring: a Cylinder 2 3/4 in across and 1/2 in tall, and a Cylinder Hole the same height and 2 1/2 in across (the body's width). Align them and Group. Then slide the ring around the middle of the body on the orange outline and Align it to the body's centre.",
         skill: "Hole",
-        figure: { parts: [...DOLL, done(HAIR), added(OBI)] },
-        check: needBody((_body, scene) => (findObi(scene) ? pass() : fail("Add a band 0.25 to 0.8 in tall around the middle of the body, a little wider than the body."))),
+        figure: { parts: [...DOLL, done(BOB), added(OBI)] },
+        ghost: ghostObi,
+        check: needBody((body, scene) => {
+          const obi = findObi(scene);
+          if (!obi) return fail("Add a band 1/4 to 3/4 in tall around the middle of the body, a little wider than the body.");
+          return centred(obi, body) ? pass() : fail("Align the obi to the body's centre.");
+        }),
         success: "The obi is the wide sash that ties a kimono.",
       }],
       multi: true,
@@ -446,19 +841,20 @@ const kokeshi: Lesson = {
           steps: [{
             id: "collar-v",
             title: "Collar",
-            body: "Place a thin Wedge on the front of the body, slanting in toward the middle. Duplicate it and Mirror it to make a V.",
-            skill: "Place on a face",
+            body: "Place a thin Wedge (1/8 in thick, 1 1/2 in long) on the front of the body, slanting in toward the middle. Duplicate it and Mirror it to make a V. Align the two so the V is centred.",
+            skill: "Mirror",
+            figure: { parts: [...DRESSED, added({ shape: "rect", x: -0.3, y: 2.6, w: 0.15, h: 1.3, tilt: -25 }), added({ shape: "rect", x: 0.3, y: 2.6, w: 0.15, h: 1.3, tilt: 25 })] },
             check: needBody((body, scene) => (mirroredPair(solids(scene).filter((part) => part.kind === "wedge" && touches(part, body)), body.cx, 1.5) ? pass() : fail("Add two matching Wedges in a V on the front of the body."))),
           }],
         },
         {
           id: "flowers",
-          label: "Flowers",
+          label: "Flower pattern",
           blurb: "A ring of flowers around the body.",
           steps: [{
-            id: "flower-pattern",
+            id: "flower-print",
             title: "Flower print",
-            body: "Build one small flower: a Sphere for the centre and five stretched Spheres as petals. Group it. Then use Pattern, around a circle, so 6 to 8 copies circle the body.",
+            body: "Build one small flower: a Sphere for the centre and five stretched Spheres as petals, about 1/2 in across in all. Group it and place it on the body. Then use Pattern, around a circle, so 6 to 8 copies circle the body.",
             skill: "Circular pattern",
             check: needBody((body, scene) => (patternAround(extras(scene), body, 5) ? pass() : fail("Make at least 5 matching copies around the body with Pattern."))),
             didYouKnow: "Pattern places copies at exactly even spacing. Try 5, 6 and 8 to see which looks best.",
@@ -466,23 +862,23 @@ const kokeshi: Lesson = {
         },
         {
           id: "wrap",
-          label: "Wrap",
+          label: "Wrapped design",
           blurb: "Text or shapes wrapped around the body.",
           steps: [{
             id: "wrap-design",
             title: "Wrapped design",
             body: "Write a word or lay out a row of small shapes, then use Cylinder wrap to bend them around the body.",
             skill: "Wrap around a cylinder",
-            check: printable,
+            check: (scene) => (allPartsWrapped(scene) ? pass() : fail("Select your word or shapes and use Cylinder wrap to bend them around the body.")),
           }],
         },
       ],
       after: [{
         id: "raised-engraved",
         title: "Raised or engraved?",
-        body: "Keep your details raised, or turn them into Holes and group them with the body to engrave them about 0.04 in deep.",
+        body: "Keep your details raised, or turn them into Holes and group them with the body to engrave them about 1/32 in deep.",
         check: printable,
-        hint: "Raised details print best at 0.05 in thick or more.",
+        hint: "Raised details print best at 1/16 in thick or more.",
       }],
       ownWayChecks: [
         { label: "An obi wraps the middle of the body", check: needBody((_body, scene) => (findObi(scene) ? pass() : fail("Add a band around the middle of the body."))) },
@@ -504,9 +900,9 @@ const kokeshi: Lesson = {
           steps: [{
             id: "chest-plate",
             title: "Chest plate",
-            body: "Duplicate the body, Hollow it to a 0.08 in wall, then cut away everything but the front with a Box Hole and Group.",
+            body: "Duplicate the body, Hollow it to a 1/16 in wall, then cut away everything but the front with a Box Hole and Group. Align it to the body's centre.",
             skill: "Hollow",
-            check: printable,
+            check: (scene) => (solids(scene).some(isHollowed) ? pass() : fail("Hollow a copy of the body with a thin wall.")),
           }],
         },
         {
@@ -516,9 +912,9 @@ const kokeshi: Lesson = {
           steps: [{
             id: "shoulder-guards",
             title: "Shoulder guards",
-            body: "Flatten a Half sphere and place it on one shoulder. Duplicate and Mirror it for the other shoulder.",
+            body: "Flatten a Half Sphere (1 1/4 in across, 3/8 in tall) and place it on one shoulder. Duplicate and Mirror it for the other shoulder.",
             skill: "Mirror",
-            check: needBody((body, scene) => (mirroredPair(extras(scene).filter((part) => part.kind === "halfSphere"), body.cx, 1.5) ? pass() : fail("Add two matching Half spheres, one on each shoulder."))),
+            check: needBody((body, scene) => (mirroredPair(extras(scene).filter((part) => part.kind === "halfSphere"), body.cx, 1.5) ? pass() : fail("Add two matching Half Spheres, one on each shoulder."))),
           }],
         },
         {
@@ -528,8 +924,8 @@ const kokeshi: Lesson = {
           steps: [{
             id: "skirt-plates",
             title: "Skirt plates",
-            body: "Make one small rounded plate at the hip, round its edges with Fillet, then Pattern it around the body, 8 to 12 copies.",
-            skill: "Pattern",
+            body: "Make one small rounded plate (a Box 5/8 x 1/8 x 1 in) at the hip, round its edges with Fillet, then Pattern it around the body, 8 to 12 copies.",
+            skill: "Circular pattern",
             check: needBody((body, scene) => (patternAround(extras(scene), body, 6) ? pass() : fail("Pattern at least 6 plates around the body."))),
           }],
         },
@@ -545,25 +941,22 @@ const kokeshi: Lesson = {
         {
           id: "face-workplane",
           title: "Find the face",
-          body: "Use the Workplane tool and click the front of the head. New shapes now land on the face.",
-          skill: "Workplane on a face",
+          body: "Use the Workplane tool and click the front of the head. New shapes now land on the face. (Click the workplane tool again on the grid to put it back later.)",
         },
         {
           id: "face-eyes",
           title: "Eyes",
-          body: "Two small Ellipses, 0.1 to 0.2 in. Place one, then Duplicate and Mirror it. Keep them raised, or make them Holes to engrave them.",
+          body: "Two small Ellipses, about 3/16 in wide and 1/8 in tall. Place one, then Duplicate and Mirror it. Select both eyes and the head and Align them to the middle left to right. Keep them raised, or make them Holes to engrave them.",
           skill: "Mirror",
-          figure: { parts: [...DRESSED, added({ shape: "ellipse", x: -0.45, y: 4.95, w: 0.18, h: 0.12 }), added({ shape: "ellipse", x: 0.45, y: 4.95, w: 0.18, h: 0.12 })] },
-          check: needHead((head, _body, scene) => {
-            const small = allSmallOn(scene, head);
-            return mirroredPair(small, head.cx, 1) ? pass() : fail("Add two matching eyes, the same distance from the middle of the face.");
-          }),
+          figure: { parts: [...DRESSED, added({ shape: "ellipse", x: -0.45, y: HEAD_Y + 1.15, w: 0.19, h: 0.125 }), added({ shape: "ellipse", x: 0.45, y: HEAD_Y + 1.15, w: 0.19, h: 0.125 })] },
+          check: needHead((head, _body, scene) => (mirroredPair(allSmallOn(scene, head), head.cx, 1) ? pass() : fail("Add two matching eyes, the same distance from the middle of the face."))),
         },
         {
           id: "face-mouth",
           title: "Brows and mouth",
-          body: "A thin Crescent for each brow, and a small Crescent or Heart for the mouth.",
+          body: "A thin Crescent for each brow (Mirror the second), and a small Crescent or Heart for the mouth, centred with Align.",
           skill: "Working at small scale",
+          figure: { parts: [...DRESSED, done({ shape: "ellipse", x: -0.45, y: HEAD_Y + 1.15, w: 0.19, h: 0.125 }), done({ shape: "ellipse", x: 0.45, y: HEAD_Y + 1.15, w: 0.19, h: 0.125 }), added({ shape: "crescent", x: 0, y: HEAD_Y + 0.75, w: 0.35, h: 0.12 })] },
           check: needHead((head, _body, scene) => (allSmallOn(scene, head).some((part) => part.kind === "crescent" || part.kind === "heart") ? pass() : fail("Add a small Crescent or Heart on the face."))),
         },
         {
@@ -573,10 +966,14 @@ const kokeshi: Lesson = {
         },
         {
           id: "face-measure",
-          title: "Measure it",
-          body: "Open the Measure tool and check that nothing on the face is smaller than 0.04 in.",
+          title: "Measure the details",
+          body: "Open the Tape measure and measure the smallest detail on the face. Nothing should be smaller than 1/32 in, or the printer can't make it.",
           skill: "Measure",
-          didYouKnow: "Most printers can't make details smaller than the nozzle, usually about 0.016 in (0.4 mm).",
+          check: needHead((head, _body, scene) => {
+            const tiny = allSmallOn(scene, head).filter((part) => Math.min(part.w, part.h, part.d) < inches(1 / 32));
+            return tiny.length ? fail(`${tiny.length === 1 ? "One detail is" : `${tiny.length} details are`} thinner than 1/32 in. Make ${tiny.length === 1 ? "it" : "them"} a little thicker.`) : pass();
+          }),
+          didYouKnow: "Most printers can't make details smaller than the nozzle, usually about 1/64 in (0.4 mm).",
         },
       ],
       ownWayChecks: [
@@ -588,22 +985,22 @@ const kokeshi: Lesson = {
       id: "accessories",
       title: "Accessories",
       goal: "Give your doll something to hold or wear.",
-      skills: ["Workplane on a face", "Hole", "Pattern", "Hollow", "Rotate", "Align"],
+      skills: ["Hole", "Circular pattern", "Hollow", "Rotate", "Align", "Group"],
       multi: true,
       choices: [
-        { id: "fan", label: "Fan", blurb: "A folding fan.", steps: [accessoryStep("fan", "Fan", "Cut a thin Cylinder to a half or quarter circle with a Box Hole. Add ribs with Pattern and a short handle where the hand is.", "Pattern")] },
-        { id: "sword", label: "Sword", blurb: "A katana leaning on the body.", steps: [accessoryStep("sword", "Sword", "A long thin Box for the blade, a Cylinder for the handle and a flat disc for the guard. Lean it on the body so it touches in two places.", "Rotate", "Lean it on the body. A sword that sticks out sideways snaps off when printed.")] },
-        { id: "umbrella", label: "Umbrella", blurb: "A parasol over the shoulder.", steps: [accessoryStep("umbrella", "Umbrella", "A Half sphere or Cone for the canopy, Hollowed, and a thin Cylinder handle. Add ribs with Pattern.", "Hollow")] },
-        { id: "flower", label: "Flower", blurb: "A flower to hold or wear.", steps: [accessoryStep("flower", "Flower", "Five stretched Spheres as petals, made with Pattern around a small centre Sphere. Hold it at the hands or put it in the hair.", "Pattern")] },
-        { id: "ornament", label: "Ornament", blurb: "A hair pin or another bow.", steps: [accessoryStep("ornament", "Hair ornament", "A hair pin (a thin Cylinder with a small Sphere end) or a bow like the sash bow, placed in the hair.", "Align")] },
+        { id: "fan", label: "Fan", blurb: "A folding fan in the hands.", steps: fanSteps },
+        { id: "sword", label: "Sword", blurb: "A katana leaning on the body.", steps: swordSteps },
+        { id: "umbrella", label: "Umbrella", blurb: "A parasol over the shoulder.", steps: umbrellaSteps },
+        { id: "flower", label: "Flower", blurb: "A flower to hold or wear.", steps: flowerSteps },
+        { id: "ornament", label: "Hair ornament", blurb: "A hair pin with a bead.", steps: ornamentSteps },
       ],
-      ownWayChecks: [{ label: "It will print", check: printable }],
+      ownWayChecks: [{ label: "It touches the doll and will print", check: printable }],
     },
     {
       id: "print",
       title: "Print prep",
-      goal: "Make the doll one solid, printable piece and export it.",
-      skills: ["Check for floating parts", "Measure", "Group", "Export"],
+      goal: "Check the doll, colour it in your filament colours, and bundle it for printing.",
+      skills: ["Check for floating parts", "Measure", "Bundle", "Export"],
       guidedOnly: true,
       steps: [
         {
@@ -613,44 +1010,55 @@ const kokeshi: Lesson = {
           skill: "Check for floating parts",
           check: (scene) => {
             const floating = floatingObjects(scene);
-            return floating.length ? fail(`${floating.length} part${floating.length === 1 ? " is" : "s are"} floating: ${floating.map((part) => part.shape.name).slice(0, 3).join(", ")}.`) : pass();
+            return floating.length ? fail(`${floating.length} part${floating.length === 1 ? " is" : "s are"} floating: ${floating.map((part) => part.shape.name).slice(0, 3).join(", ")}. Move ${floating.length === 1 ? "it" : "them"} until ${floating.length === 1 ? "it touches" : "they touch"} the doll.`) : pass();
           },
           success: "Everything is connected.",
         },
         {
           id: "print-flat",
           title: "Flat bottom",
-          body: "The bottom of the doll must sit flat on the workplane, at height 0.",
+          body: "The bottom of the doll must sit flat on the workplane. Select everything and use Drop to workplane if it doesn't.",
           check: (scene) => {
-            const lowest = Math.min(...solids(scene).map((part) => part.box.minY));
-            return Number.isFinite(lowest) && Math.abs(lowest) < 0.3 ? pass() : fail("Move the doll so its lowest point is on the workplane.");
+            const lowest = Math.min(...solids(scene).filter((part) => !holes(scene).some((cut) => cut.topId === part.topId)).map((part) => part.box.minY));
+            return !Number.isFinite(lowest) || Math.abs(lowest) < 0.3 ? pass() : fail(`The doll's lowest point is ${formatInches(lowest)} above the workplane. Select everything and use Drop to workplane.`);
           },
         },
         {
           id: "print-size",
-          title: "Final size",
-          body: "Measure the whole doll. It should be 6 to 8 in tall.",
+          title: "Measure the whole doll",
+          body: "Select everything and drag the Ruler to a corner of the doll. It should be 6 to 8 in tall.\n\nToo short or too tall? Select everything and use Scale by percent, so every part grows or shrinks together and nothing changes shape.",
           skill: "Measure",
           check: (scene) => {
             const top = Math.max(...solids(scene).map((part) => part.box.maxY));
-            return between(top, inches(6), inches(8)) ? pass() : fail(`The doll is ${(top / 25.4).toFixed(1)} in tall. Aim for 6 to 8 in.`);
+            if (between(top, inches(6), inches(8))) return pass(`Your doll is ${formatInches(top)} tall.`);
+            const percent = Math.round((inches(7) / top) * 100);
+            return fail(`Your doll is ${formatInches(top)} tall. Aim for 6 to 8 in: select everything and use Scale by percent at about ${percent} % to make it 7 in, without changing its shape.`);
           },
+          success: "The right height for printing.",
         },
         {
-          id: "print-group",
-          title: "Group everything",
-          body: "Select everything (Ctrl+A) and press Group so the doll exports as one piece.",
-          skill: "Group",
+          id: "print-colours",
+          title: "Colour it to print",
+          body: "Give each part the colour of the filament you want it printed in: hair black, body red, and so on. Select a part and pick its colour in the shape's card.\n\nThese colours tell your teacher which filament to use.",
+          skill: "Colour",
+          check: (scene) => (new Set(solids(scene).map((part) => part.shape.color.toLowerCase())).size >= 2 ? pass() : fail("Give the parts at least two different filament colours.")),
+        },
+        {
+          id: "print-bundle",
+          title: "Bundle everything",
+          body: "Select everything (Ctrl+A) and press Bundle (Ctrl+B). A bundle holds the parts together but keeps each one in its own colour, so the colours come through to the printer.",
+          skill: "Bundle",
           check: (scene) => {
             const objects = topObjects(scene).filter((part) => !part.hole);
-            return objects.length === 1 ? pass() : fail(`There are ${objects.length} separate objects. Select all and Group.`);
+            if (objects.length !== 1) return fail(`There are ${objects.length} separate objects. Select all (Ctrl+A) and press Bundle (Ctrl+B).`);
+            return objects[0].shape.groupOperation === "bundle" ? pass() : fail("That's a group. Select it and use Bundle (Ctrl+B) instead, so each part keeps its colour.");
           },
+          didYouKnow: "Group joins parts into one solid. Bundle only holds them together, so a multi-colour printer can print each part in its own filament.",
         },
         {
           id: "print-done",
           title: "Congratulations!",
-          body: "You designed a kokeshi from scratch. Export it as STL or 3MF from the export menu and send it to the printer. Your teacher can see your finished design in LayerLab.",
-          didYouKnow: "Hair, armor and accessories can also be printed in separate colours if your printer allows it. Ask your teacher.",
+          body: "You designed a kokeshi from scratch. Export it as 3MF (it keeps the colours) from the export menu. Your teacher can see your finished design in LayerLab.",
         },
       ],
     },
@@ -668,10 +1076,6 @@ const kokeshi: Lesson = {
 
 function allSmallOn(scene: LessonScene, head: Part) {
   return solids(scene).filter((part) => part !== head && Math.max(part.w, part.h, part.d) < inches(0.8) && touches(part, head, 0.8));
-}
-
-function accessoryStep(id: string, title: string, body: string, skill: string, hint?: string): LessonStep {
-  return { id: `accessory-${id}`, title, body, skill, hint, check: printable, success: "It touches the doll and is thick enough to print." };
 }
 
 export default kokeshi;

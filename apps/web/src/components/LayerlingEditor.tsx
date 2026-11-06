@@ -108,6 +108,7 @@ import { useHistoryViewPicking } from "./workplane/useHistoryViewPicking";
 import { ShortcutsModal } from "./workplane/ShortcutsModal";
 import { InteractiveHelp } from "./InteractiveHelp";
 import { LessonPanel } from "./lessons/LessonPanel";
+import type { GhostPart } from "@/lib/lessons/types";
 import { ShapeContextMenu, type ShapeContextMenuItem } from "./workplane/ShapeContextMenu";
 import { nextSelectionTransparency } from "@/lib/selectionTransparency";
 import { canonicalizeShape, cloneWorkplaneShapeTreeWithFreshIds, cleanNearZero, cleanRotationDegrees, isNonSolidShape, meshYawDegrees, preservesEdgeTreatmentSize, serializeShapesForSync, shapeDepth, shapeExtrudeDeformPatch, shapeHasShapeDeform, shapeTaperPatch, resizedShapeSize, shapeTransformShouldRemainEditable, shapeWidth, shapeWithParametricSource, patchTouchesBodyParameters, withHoleMode, workplaneShapesEqual, shellNeedingRebuild, hollowStretchSincePicture, shellRebuildReference, edgeTreatmentsAfterShell } from "@/lib/workplaneShapes";
@@ -3095,6 +3096,7 @@ export function LayerlingEditor({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   // Interactive Help: while on, a click asks the guide about the element instead of using it.
   const [interactiveHelp, setInteractiveHelp] = useState(false);
+  const [lessonGhost, setLessonGhost] = useState<GhostPart[] | null>(null);
   const toggleInteractiveHelp = useCallback(() => {
     setInteractiveHelp((on) => {
       setNotice(t(on ? "interactiveHelp.ended" : "interactiveHelp.started"));
@@ -16873,6 +16875,7 @@ export function LayerlingEditor({
         ) : (
           <WorkplaneViewport
           projectName={projectName}
+          lessonGhost={lessonGhost}
           projectId={editorOpen ? projectId ?? null : null}
           shapes={historyView.shapes ?? viewportShapes}
           selectedIds={historyViewState ? [] : selectedIds}
@@ -17634,11 +17637,19 @@ export function LayerlingEditor({
         <LessonPanel
           projectId={projectId}
           shapes={shapes}
+          projectName={projectName}
           units={workspaceSettings.units}
+          inchFormat={workspaceSettings.inchFormat}
           onUseUnits={(units) => updateProjectWorkspaceSettings({
-            workspace: { ...workspaceSettingsRef.current, units, scale: normalizeScaleForUnits(units, workspaceSettingsRef.current.scale) },
+            workspace: {
+              ...workspaceSettingsRef.current,
+              units,
+              scale: normalizeScaleForUnits(units, workspaceSettingsRef.current.scale),
+              ...(units === "Imperial" ? { inchFormat: "fraction" as const } : {}),
+            },
             snap: snapGridRef.current,
           })}
+          onGhostChange={setLessonGhost}
         />
       ) : null}
       {viewedAttachment ? <AttachmentViewer attachment={viewedAttachment} onClose={() => setViewedAttachmentId(null)} /> : null}

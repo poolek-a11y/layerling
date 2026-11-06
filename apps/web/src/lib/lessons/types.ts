@@ -8,8 +8,24 @@ import type { WorkplaneShape } from "@/types/layerling";
 
 export type CheckResult = { ok: boolean; message?: string };
 
-/** What a check sees: the design's shapes as the editor holds them (millimetres). */
-export type LessonScene = { shapes: WorkplaneShape[] };
+/** What a check sees: the design's shapes as the editor holds them (millimetres), and its name. */
+export type LessonScene = { shapes: WorkplaneShape[]; projectName?: string };
+
+/**
+ * An orange outline drawn on the build plate where the next part goes, like Tinkercad's lessons,
+ * in millimetres: x and z the centre, y the bottom.
+ */
+export type GhostPart = {
+  kind: "box" | "cylinder" | "sphere" | "halfSphere" | "cone";
+  x: number;
+  z: number;
+  y: number;
+  w: number;
+  d: number;
+  h: number;
+  /** Drawn grey, as a hole. */
+  hole?: boolean;
+};
 
 export type StepCheck = (scene: LessonScene) => CheckResult;
 
@@ -41,8 +57,10 @@ export type LessonStep = {
   hint?: string;
   didYouKnow?: string;
   figure?: StepFigure;
-  /** Without a check, Next is always on. */
+  /** Without a check, Next is always on (and the step teaches no skill of its own). */
   check?: StepCheck;
+  /** Where the part goes, drawn on the build plate until the check passes. */
+  ghost?: (scene: LessonScene) => GhostPart[] | null;
   /** Shown with the green tick when the check passes. */
   success?: string;
 };

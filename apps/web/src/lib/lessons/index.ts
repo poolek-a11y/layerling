@@ -49,9 +49,9 @@ export type LessonProgress = {
   chosen: Record<string, string[]>;
   /** Sections the student is doing their own way. */
   ownWay: Record<string, boolean>;
-  /** Steps the student finished (the check passed, or a step without a check was read). */
+  /** Steps whose check passed (and steps without a check that were read). */
   done: string[];
-  /** Sections finished, for the star burst only once. */
+  /** Sections achieved (see sectionAchieved), for the tick in the list and stars only once. */
   finished: string[];
   collapsed?: boolean;
 };
@@ -85,25 +85,40 @@ export function newProgress(lessonId: string): LessonProgress {
 
 export type LessonPage = { kind: "step"; step: LessonStep } | { kind: "menu" };
 
+/**
+ * The pages of a section: the menu first, so a student sees every option before building,
+ * then the steps everyone does, the chosen steps in menu order, and the steps after.
+ */
 export function sectionPages(section: LessonSection, chosen: string[]): LessonPage[] {
-  const pages: LessonPage[] = (section.steps ?? []).map((step) => ({ kind: "step", step }));
-  if (section.choices?.length) {
-    pages.push({ kind: "menu" });
-    for (const choice of section.choices) {
-      if (chosen.includes(choice.id)) pages.push(...choice.steps.map((step) => ({ kind: "step" as const, step })));
-    }
+  const pages: LessonPage[] = [];
+  if (section.choices?.length) pages.push({ kind: "menu" });
+  pages.push(...(section.steps ?? []).map((step) => ({ kind: "step" as const, step })));
+  for (const choice of section.choices ?? []) {
+    if (chosen.includes(choice.id)) pages.push(...choice.steps.map((step) => ({ kind: "step" as const, step })));
   }
   pages.push(...(section.after ?? []).map((step) => ({ kind: "step" as const, step })));
   return pages;
 }
 
-/** Every skill a student practised in the steps they finished, with the first step that taught it. */
+/**
+ * The section was really achieved: a choice is made and every step with a check passed it
+ * (reading a page or skipping a check does not count).
+ */
+export function sectionAchieved(section: LessonSection, chosen: string[], done: string[]) {
+  const pages = sectionPages(section, chosen);
+  const checked = pages.filter((page) => page.kind === "step" && page.step.check);
+  if (!checked.length) return false;
+  if (section.choices?.length && !chosen.length) return false;
+  return checked.every((page) => page.kind === "step" && done.includes(page.step.id));
+}
+
+/** Every skill a student practised in the checked steps they passed, with the first step that taught it. */
 export function skillsUsed(lesson: Lesson, done: string[]) {
   const found = new Map<string, { section: number; stepId: string }>();
   lesson.sections.forEach((section, sectionIndex) => {
     const steps = [...(section.steps ?? []), ...(section.choices ?? []).flatMap((choice) => choice.steps), ...(section.after ?? [])];
     for (const step of steps) {
-      if (step.skill && done.includes(step.id) && !found.has(step.skill)) found.set(step.skill, { section: sectionIndex, stepId: step.id });
+      if (step.skill && step.check && done.includes(step.id) && !found.has(step.skill)) found.set(step.skill, { section: sectionIndex, stepId: step.id });
     }
   });
   return [...found.entries()].map(([skill, where]) => ({ skill, ...where }));
