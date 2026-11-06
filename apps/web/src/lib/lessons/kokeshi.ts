@@ -832,6 +832,7 @@ const kokeshi: Lesson = {
   id: "kokeshi",
   title: "Kokeshi Maker",
   subtitle: "Design and 3D print your own kokeshi doll",
+  freestyleIdeas: "Build a new kokeshi, a family of dolls, or add more to yours.",
   units: "Imperial",
   sections: [
     { id: "welcome", title: "Welcome", goal: "Learn what a kokeshi is, see your choices, and name your design.", skills: [], steps: welcome, guidedOnly: true },

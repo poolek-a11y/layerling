@@ -102,6 +102,8 @@ export type Lesson = {
   /** Shown at the top of the panel. */
   subtitle: string;
   sections: LessonSection[];
+  /** Freestyle's suggestion of what to make next, after the section's goal. */
+  freestyleIdeas?: string;
   /** The workspace units the lesson's numbers are in; the panel offers to switch. */
   units: "Imperial" | "Metric (Default)";
 };
