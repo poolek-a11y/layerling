@@ -28,7 +28,7 @@ import type { WorkplaneShape } from "@/types/layerling";
 type Props = {
   projectId: string | null | undefined;
   shapes: WorkplaneShape[];
-  /** The design's name: the lesson asks for Kokeshi_yourname. */
+  /** The design's name: a lesson asks for, e.g., Kokeshi_yourname. */
   projectName?: string;
   units: string;
   /** "fraction" when inches show as 1 5/8 instead of 1.625. */
@@ -288,7 +288,7 @@ export function LessonPanel({ projectId, shapes, projectName, units, inchFormat,
             <p>{tx(section.goal)}</p>
             {section.freestyle ? (
               <>
-                <p>No steps here. Build a new kokeshi, a family of dolls, or add more to yours. Here is every skill you have used so far:</p>
+                <p>No steps here. {tx(lesson.freestyleIdeas ?? "Build something new, or add more to your design.")} Here is every skill you have used so far:</p>
                 {skills.length ? (
                   <ul className="lesson-skill-list">
                     {skills.map((entry) => (

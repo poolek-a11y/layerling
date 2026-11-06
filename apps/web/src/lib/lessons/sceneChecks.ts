@@ -99,8 +99,13 @@ function groupScale(group: WorkplaneShape): [number, number, number] {
   return [shapeWidth(group) / Math.max(0.001, baseW), group.height / Math.max(0.001, baseH), shapeDepth(group) / Math.max(0.001, baseD)];
 }
 
+/** The parts found for each list of shapes, so every check on one scene sees the same Part objects (a check can compare them with ===). */
+const partsCache = new WeakMap<WorkplaneShape[], Part[]>();
+
 /** Every single shape, grouped ones included, placed in the world and tagged with the top-level object it is in. */
 export function allParts(scene: LessonScene): Part[] {
+  const cached = partsCache.get(scene.shapes);
+  if (cached) return [...cached];
   const out: Part[] = [];
   const walk = (shape: WorkplaneShape, topId: string) => {
     if (shape.groupedShapes?.length) {
@@ -112,7 +117,8 @@ export function allParts(scene: LessonScene): Part[] {
     if (shape.kind === "ruler") continue;
     walk(shape, shape.id);
   }
-  return out;
+  partsCache.set(scene.shapes, out);
+  return [...out];
 }
 
 export const solids = (scene: LessonScene) => allParts(scene).filter((part) => !part.hole);
@@ -213,9 +219,10 @@ export function thinParts(scene: LessonScene, minimum = inches(0.05)) {
   return solids(scene).filter((part) => Math.min(part.w, part.h, part.d) < minimum - 0.05);
 }
 
-export function connectedAndPrintable(scene: LessonScene): CheckResult {
+/** Every part touches the rest of the model (`what`: "doll", "nutcracker") and none is too thin to print. */
+export function connectedAndPrintable(scene: LessonScene, what = "doll"): CheckResult {
   const floating = floatingObjects(scene);
-  if (floating.length) return fail(`${floating.length === 1 ? "One part is" : `${floating.length} parts are`} not touching the doll. Move ${floating.length === 1 ? "it" : "them"} until ${floating.length === 1 ? "it touches" : "they touch"}.`);
+  if (floating.length) return fail(`${floating.length === 1 ? "One part is" : `${floating.length} parts are`} not touching the ${what}. Move ${floating.length === 1 ? "it" : "them"} until ${floating.length === 1 ? "it touches" : "they touch"}.`);
   const thin = thinParts(scene);
   if (thin.length) return fail(`${thin.length === 1 ? "One part is" : `${thin.length} parts are`} thinner than 0.05 in. Make ${thin.length === 1 ? "it" : "them"} a little thicker so ${thin.length === 1 ? "it prints" : "they print"}.`);
   return pass();

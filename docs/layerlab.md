@@ -67,11 +67,12 @@ A tutorial can also start a **guided lesson** inside the editor. The first one i
 
 - **Teacher.** In *Tutorials and starters*, edit or create a tutorial and pick *Kokeshi Maker* under *Guided lesson in the editor*. Leave the starter empty: students build every part themselves.
 - **Student.** The tutorial shows *Start the guided lesson*. It opens a new design with the lesson panel on the left: one step at a time, a picture of the step, an orange outline on the build plate where the part goes, the skill being practised, a hint, and a check that turns *Next* on when the model is right (or says what size the part is now and how to fix it without changing its shape). Each section shows its menu of choices first. Stars appear only for a section whose checks all passed. Sizes are in decimal inches (a new lesson design switches to them), with a switch to millimetres. Each section can also be done with *My own design*, which keeps only the goal and the print checks, with a button back to the guided steps.
-- **Without LayerLab.** Any link to the start page with `?lesson=kokeshi` opens the lesson with the next design.
+- **Nutcracker.** The second lesson: an 8 to 10 inch nutcracker (up to 12 inches) built from the bottom up (base, legs and boots, body, peg joints, head, face with decorative teeth, hair, hat, optional arms and uniform, accessory, print prep, then freestyle). It prints in pieces joined by peg joints: each hole is 1/32 inch wider and 1/32 inch deeper than its peg, and the checks teach and test that clearance. Students name the design `Nutcracker_name`, mark the parts to paint metallic gold or silver, and lay the pieces out for printing; the last step covers metallic paint and a gloss finish.
+- **Without LayerLab.** Any link to the start page with `?lesson=kokeshi` (or `?lesson=nutcracker`) opens the lesson with the next design.
 
 Checks look at the boxes around the shapes, not the exact geometry, so a student whose design is right but not recognised can press *Skip*. Lesson progress is kept per design in the browser that is used; the design itself is saved to the class folder as usual.
 
-The lesson content lives in `apps/web/src/lib/lessons/kokeshi.ts`.
+The lesson content lives in `apps/web/src/lib/lessons/kokeshi.ts` and `apps/web/src/lib/lessons/nutcracker.ts`.
 
 ## Limits of this first version
 
