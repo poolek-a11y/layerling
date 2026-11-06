@@ -1,5 +1,6 @@
 "use client";
 
+import { LESSON_OPTIONS, lessonLink } from "@/lib/lessons/catalog";
 import { ArrowLeft, BookOpen, GraduationCap, History, KeyRound, LogOut, MessageSquare, Plus, RefreshCw, Trash2, Upload, Users, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { fetchLayerLabStatus, layerLabCall, layerLabFileUrl, layerLabUpload } from "@/lib/layerlab/client";
@@ -554,6 +555,13 @@ function TutorialsPanel({ current, onChanged, onNotice }: { current: LayerLabCla
               <input value={editing.link ?? ""} onChange={(event) => setEditing({ ...editing, link: event.target.value })} placeholder="https://" />
             </label>
             <label>
+              Guided lesson in the editor (optional)
+              <select value={editing.lessonId ?? ""} onChange={(event) => setEditing({ ...editing, lessonId: event.target.value || undefined })}>
+                <option value="">No guided lesson</option>
+                {LESSON_OPTIONS.map((lesson) => <option key={lesson.id} value={lesson.id}>{lesson.title}</option>)}
+              </select>
+            </label>
+            <label>
               Starter (optional)
               <select value={editing.starterId ?? ""} onChange={(event) => setEditing({ ...editing, starterId: event.target.value || undefined })}>
                 <option value="">No starter</option>
@@ -588,12 +596,14 @@ function TutorialsPanel({ current, onChanged, onNotice }: { current: LayerLabCla
 
 function TutorialBody({ tutorial, current, action }: { tutorial: LayerLabTutorial; current: LayerLabClass; action?: ReactNode }) {
   const starter = current.starters.find((entry) => entry.id === tutorial.starterId);
+  const lesson = LESSON_OPTIONS.find((entry) => entry.id === tutorial.lessonId);
   return (
     <>
       <Paragraphs text={tutorial.body} />
       <div className="layerlab-row">
         {tutorial.link ? <a className="layerlab-button" href={tutorial.link} target="_blank" rel="noreferrer noopener">Open the video or page</a> : null}
         {starter ? <span className="layerlab-muted">Starter: {starter.title}</span> : null}
+        {lesson && !action ? <span className="layerlab-muted">Guided lesson: {lesson.title}</span> : null}
         {action}
       </div>
     </>
@@ -803,6 +813,10 @@ function StudentView({ status, onNotice }: { status: LayerLabStatus; onNotice: (
       {starting === starterId ? "Making your copy…" : "Start from the starter"}
     </button>
   );
+  // A guided lesson starts from an empty workplane: students build every part themselves.
+  const lessonButton = (lessonId: string) => (
+    <a className="layerlab-button primary" href={lessonLink(LAYERLAB_NEW_DESIGN_URL, lessonId)}>Start the guided lesson</a>
+  );
   const loneStarters = current?.starters.filter((starter) => !current.tutorials.some((tutorial) => tutorial.starterId === starter.id)) ?? [];
 
   return (
@@ -830,7 +844,7 @@ function StudentView({ status, onNotice }: { status: LayerLabStatus; onNotice: (
           {current.tutorials.map((tutorial) => (
             <article key={tutorial.id} className="layerlab-tutorial">
               <h3>{tutorial.title}</h3>
-              <TutorialBody tutorial={tutorial} current={current} action={tutorial.starterId ? startButton(tutorial.starterId) : null} />
+              <TutorialBody tutorial={tutorial} current={current} action={tutorial.lessonId ? lessonButton(tutorial.lessonId) : tutorial.starterId ? startButton(tutorial.starterId) : null} />
             </article>
           ))}
         </section>

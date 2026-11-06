@@ -13,6 +13,8 @@ export type LayerLabTutorial = {
   link?: string;
   /** The starter a student can begin this tutorial from. */
   starterId?: string;
+  /** A guided lesson built into the editor (lib/lessons), e.g. "kokeshi": students start a new design with its step-by-step panel. */
+  lessonId?: string;
   createdAt: number;
 };
 

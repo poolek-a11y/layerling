@@ -83,6 +83,7 @@ import { downloadBackup, pngDataUrl, projectThumbnailBlob, projectThumbnailPngBy
 import { customShapesBackupEntries, restoreCustomShapesFromBackup } from "@/lib/myShapes";
 import { SHARED_PROJECTS_ENDPOINT } from "@/lib/sharedProjectsEndpoint";
 import { readLayerLabOpenRequest, withoutLayerLabOpenRequest } from "@/lib/layerlab/editorLink";
+import { captureLessonRequest } from "@/lib/lessons";
 import { LayerLabLink } from "@/components/layerlab/LayerLabLink";
 import { sendSavedWorkspaceDefaultsToServer, syncWorkspaceDefaultWithServer } from "@/lib/serverWorkspaceDefault";
 import { PICTURE_FILE_ACCEPT } from "@/lib/pictureIcon";
@@ -2228,6 +2229,8 @@ export default function Home() {
   openLayerLabRef.current = { openSharedProject, openLylProjectFromFile, createNewDesign };
   useEffect(() => {
     if (!mounted) return;
+    // A guided lesson asked for in the link (LayerLab's "Start the guided lesson") opens with the next design.
+    captureLessonRequest();
     const request = readLayerLabOpenRequest(window.location.search);
     if (!request) return;
     window.history.replaceState(null, "", withoutLayerLabOpenRequest(window.location.href));
