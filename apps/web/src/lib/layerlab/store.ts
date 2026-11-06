@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "crypto";
+import { isLessonId } from "@/lib/lessons/catalog";
 import { promises as fs } from "fs";
 import path from "path";
 import { studentStoreFolder } from "@/lib/layerlab/session";
@@ -258,6 +259,7 @@ function cleanTutorial(input: Record<string, unknown>, stored: StoredClass) {
     body: cleanText(input.body, TUTORIAL_BODY_LIMIT, "The text", false),
     link: cleanLink(input.link),
     starterId,
+    lessonId: isLessonId(input.lessonId) ? input.lessonId : undefined,
   };
 }
 
