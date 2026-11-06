@@ -13,6 +13,8 @@ import { projectSectionPoint, type SectionBody, type SectionLoop, type SectionPo
 import { normalizeSectionCutFace, SECTION_CUT_FACES, sectionCapMesh, sectionHatchSpacing, sectionHatchTexture, sectionHatchTurned, sectionHatchUvs, type SectionCutFace } from "@/lib/sectionCaps";
 import { sectionMeasurement, sectionPointToWorld, snapSectionPoint, type SectionSnap } from "@/lib/sectionMeasure";
 import * as THREE from "three";
+import type { GhostPart } from "@/lib/lessons/types";
+import { syncLessonGhost } from "@/components/workplane/lessonGhost";
 import { triangleTouchesRect, type ScreenRect } from "@/lib/screenRectHit";
 import { FramingSquareIcon } from "@/components/FramingSquareIcon";
 import { ProtractorIcon } from "@/components/ProtractorIcon";
@@ -302,6 +304,8 @@ type WorkplaneViewportProps = {
   /** The bar of build plates (Discussion #456), drawn at the foot of the view. */
   plateBar?: ReactNode;
   projectName?: string;
+  /** A guided lesson's orange outline of where the next part goes (mm), or null. */
+  lessonGhost?: GhostPart[] | null;
   /** The design on screen, null behind the overview. The viewport outlives a design, so its tools reset when this changes. */
   projectId?: string | null;
   onWorkplaneModeChange: (active: boolean) => void;
@@ -1558,6 +1562,7 @@ export function WorkplaneViewport({
   onWorkspaceSettingsChange,
   plateBar,
   projectName = "",
+  lessonGhost = null,
   projectId = null,
   onWorkplaneModeChange,
   onNotice,
@@ -3290,6 +3295,10 @@ export function WorkplaneViewport({
       threeRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (threeRef.current) syncLessonGhost(threeRef.current, lessonGhost);
+  }, [lessonGhost]);
 
   const emptyPressRef = useViewportDoubleClick({ threeRef, hostRef, shapesRef, selectedIdsRef, workspaceRef, pivotPickModeRef, drawnWorkplane, onEditSketch, onOpenGroup });
 

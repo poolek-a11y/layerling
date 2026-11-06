@@ -3,17 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Compass, Lightbulb, PencilRuler, Sparkles, X } from "lucide-react";
 import { LessonFigure } from "@/components/lessons/LessonFigure";
+import { lessonText } from "@/lib/lessons/units";
 import {
   LESSONS,
   loadProgress,
   newProgress,
   saveProgress,
+  sectionAchieved,
   sectionPages,
   skillsUsed,
   takePendingLesson,
   type LessonProgress,
 } from "@/lib/lessons";
-import type { CheckResult, LessonScene, LessonSection } from "@/lib/lessons/types";
+import type { CheckResult, GhostPart, LessonScene, LessonSection } from "@/lib/lessons/types";
 import type { WorkplaneShape } from "@/types/layerling";
 
 /**
@@ -26,13 +28,20 @@ import type { WorkplaneShape } from "@/types/layerling";
 type Props = {
   projectId: string | null | undefined;
   shapes: WorkplaneShape[];
+  /** The design's name: the lesson asks for Kokeshi_yourname. */
+  projectName?: string;
   units: string;
+  /** "decimal" when inches show as 1.625 instead of 1 5/8. */
+  inchFormat?: string;
+  /** Switches the workspace to the lesson's units (inches as fractions). */
   onUseUnits: (units: string) => void;
+  /** The orange outlines of where the current step's part goes, for the 3D view; null for none. */
+  onGhostChange?: (ghost: GhostPart[] | null) => void;
 };
 
 const STAR_COLOURS = ["#ff5a47", "#ff9e2c", "#ffc93c", "#2fbf71", "#16c0d4", "#8a5bf0", "#e7399e", "#5b83c4"];
 
-export function LessonPanel({ projectId, shapes, units, onUseUnits }: Props) {
+export function LessonPanel({ projectId, shapes, projectName, units, inchFormat, onUseUnits, onGhostChange }: Props) {
   const [progress, setProgress] = useState<LessonProgress | null>(null);
   const [hintOpen, setHintOpen] = useState(false);
   const [burst, setBurst] = useState(0);
@@ -76,13 +85,14 @@ export function LessonPanel({ projectId, shapes, units, onUseUnits }: Props) {
   }, [panelShown]);
 
   const lesson = progress ? LESSONS[progress.lessonId] : null;
+  const metric = Boolean(lesson && lesson.units === "Imperial" && units !== "Imperial");
   const section: LessonSection | null = lesson && progress ? lesson.sections[Math.min(progress.section, lesson.sections.length - 1)] : null;
   const chosen = section && progress ? progress.chosen[section.id] ?? [] : [];
   const pages = useMemo(() => (section ? sectionPages(section, chosen) : []), [section, chosen]);
   const pageIndex = section && progress ? Math.min(progress.page[section.id] ?? 0, Math.max(0, pages.length - 1)) : 0;
   const page = pages[pageIndex];
   const ownWay = Boolean(section && progress && !section.guidedOnly && (section.freestyle || progress.ownWay[section.id]));
-  const scene: LessonScene = useMemo(() => ({ shapes }), [shapes]);
+  const scene: LessonScene = useMemo(() => ({ shapes, projectName }), [shapes, projectName]);
 
   const step = page?.kind === "step" ? page.step : null;
   const result: CheckResult | null = useMemo(() => {
@@ -113,6 +123,22 @@ export function LessonPanel({ projectId, shapes, units, onUseUnits }: Props) {
 
   useEffect(() => setHintOpen(false), [step?.id, section?.id]);
 
+  // The outline stays on the build plate until the part is in place, like Tinkercad's lessons.
+  const ghost = useMemo(() => {
+    if (!step?.ghost || ownWay || !result || result.ok) return null;
+    try {
+      return step.ghost(scene);
+    } catch {
+      return null;
+    }
+  }, [step, ownWay, result, scene]);
+  const ghostKey = ghost ? JSON.stringify(ghost.map((part) => [part.kind, part.hole, ...[part.x, part.y, part.z, part.w, part.h, part.d].map((value) => Math.round(value * 10))])) : "";
+  useEffect(() => {
+    onGhostChange?.(ghost);
+    // Redrawn only when the outline really moves, not on every edit.
+  }, [ghostKey, onGhostChange]);
+  useEffect(() => () => onGhostChange?.(null), [onGhostChange]);
+
   if (!progress || !lesson || !section) return null;
 
   const update = (change: (current: LessonProgress) => LessonProgress) => setProgress((current) => (current ? change(current) : current));
@@ -122,12 +148,18 @@ export function LessonPanel({ projectId, shapes, units, onUseUnits }: Props) {
     page: { ...current.page, [lesson.sections[sectionIndex].id]: pageNumber },
   }));
 
+  // Stars only for a section really achieved: every check passed (or, done their own way, every
+  // print check). Reading pages or skipping a check just moves on to the next section.
   const finishSection = () => {
-    if (!progress.finished.includes(section.id)) setBurst(Date.now());
+    const achieved = ownWay
+      ? ownWayResults.length > 0 && ownWayResults.every((entry) => entry.result.ok)
+      : sectionAchieved(section, chosen, step && !step.check ? [...progress.done, step.id] : progress.done);
+    const firstTime = achieved && !progress.finished.includes(section.id);
+    if (firstTime) setBurst(Date.now());
     const nextSection = Math.min(progress.section + 1, lesson.sections.length - 1);
     update((current) => ({
       ...current,
-      finished: current.finished.includes(section.id) ? current.finished : [...current.finished, section.id],
+      finished: firstTime ? [...current.finished, section.id] : current.finished,
       section: nextSection,
     }));
   };
@@ -188,6 +220,9 @@ export function LessonPanel({ projectId, shapes, units, onUseUnits }: Props) {
     );
   }
 
+  // Lessons are written in inches; a student working in millimetres reads every size in millimetres.
+  const tx = (text: string) => lessonText(text, metric);
+
   const nextBlocked = !ownWay && ((page?.kind === "menu" && !chosen.length) || (result !== null && !result.ok));
   const isLast = progress.section === lesson.sections.length - 1 && (ownWay || pageIndex >= pages.length - 1);
   const skills = section.freestyle ? skillsUsed(lesson, progress.done) : [];
@@ -218,12 +253,14 @@ export function LessonPanel({ projectId, shapes, units, onUseUnits }: Props) {
         </select>
       </label>
 
-      {units !== lesson.units ? (
-        <div className="lesson-units">
-          <span>This lesson measures in {lesson.units === "Imperial" ? "inches" : "millimetres"}.</span>
-          <button type="button" className="lesson-link-button" onClick={() => onUseUnits(lesson.units)}>
-            Switch to {lesson.units === "Imperial" ? "inches" : "millimetres"}
-          </button>
+      {lesson.units === "Imperial" ? (
+        <div className="lesson-units" role="group" aria-label="Sizes in">
+          <span>Sizes in</span>
+          <button type="button" className={!metric ? "active" : ""} aria-pressed={!metric} onClick={() => onUseUnits("Imperial")}>Inches</button>
+          <button type="button" className={metric ? "active" : ""} aria-pressed={metric} onClick={() => onUseUnits("Metric (Default)")}>Millimetres</button>
+          {!metric && inchFormat === "decimal" ? (
+            <button type="button" className="lesson-link-button" onClick={() => onUseUnits("Imperial")}>Show fractions</button>
+          ) : null}
         </div>
       ) : null}
 
@@ -231,7 +268,7 @@ export function LessonPanel({ projectId, shapes, units, onUseUnits }: Props) {
         {ownWay ? (
           <>
             <h2>{section.freestyle ? "Freestyle" : `${section.title}: my own design`}</h2>
-            <p>{section.goal}</p>
+            <p>{tx(section.goal)}</p>
             {section.freestyle ? (
               <>
                 <p>No steps here. Build a new kokeshi, a family of dolls, or add more to yours. Here is every skill you have used so far:</p>
@@ -268,8 +305,8 @@ export function LessonPanel({ projectId, shapes, units, onUseUnits }: Props) {
                   <li key={entry.label} className={entry.result.ok ? "ok" : ""}>
                     {entry.result.ok ? <Check size={14} aria-hidden="true" /> : <span className="lesson-dot" aria-hidden="true" />}
                     <span>
-                      {entry.label}
-                      {!entry.result.ok && entry.result.message ? <small>{entry.result.message}</small> : null}
+                      {tx(entry.label)}
+                      {!entry.result.ok && entry.result.message ? <small>{tx(entry.result.message)}</small> : null}
                     </span>
                   </li>
                 ))}
@@ -295,35 +332,35 @@ export function LessonPanel({ projectId, shapes, units, onUseUnits }: Props) {
                   onClick={() => choose(choice.id)}
                 >
                   <strong>{choice.label}</strong>
-                  <span>{choice.blurb}</span>
+                  <span>{tx(choice.blurb)}</span>
                 </button>
               ))}
             </div>
           </>
         ) : step ? (
           <>
-            <h2>{step.title}</h2>
+            <h2>{tx(step.title)}</h2>
             {step.skill ? <p className="lesson-skill-chips"><span className="lesson-skill">Skill: {step.skill}</span></p> : null}
-            {step.body.split(/\n\s*\n/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}
-            {step.figure ? <LessonFigure figure={step.figure} /> : null}
+            {tx(step.body).split(/\n\s*\n/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+            {step.figure ? <LessonFigure figure={step.figure.caption ? { ...step.figure, caption: tx(step.figure.caption) } : step.figure} /> : null}
             {step.hint ? (
               <div className="lesson-hint">
                 <button type="button" className="lesson-secondary-button" aria-expanded={hintOpen} onClick={() => setHintOpen((open) => !open)}>
                   <Lightbulb size={15} aria-hidden="true" /> Hint
                 </button>
-                {hintOpen ? <p>{step.hint}</p> : null}
+                {hintOpen ? <p>{tx(step.hint)}</p> : null}
               </div>
             ) : null}
             {result ? (
               <p className={result.ok ? "lesson-result ok" : "lesson-result"} role="status" aria-live="polite">
                 {result.ok ? <Check size={15} aria-hidden="true" /> : <span className="lesson-dot" aria-hidden="true" />}
-                <span>{result.ok ? (step.success ?? "Nice, you did it!") : result.message ?? "Not yet."}</span>
+                <span>{tx(result.ok ? (result.message ?? step.success ?? "Nice, you did it!") : result.message ?? "Not yet.")}</span>
               </p>
             ) : null}
             {step.didYouKnow ? (
               <div className="lesson-tip">
                 <strong><Sparkles size={14} aria-hidden="true" /> Did you know?</strong>
-                <p>{step.didYouKnow}</p>
+                <p>{tx(step.didYouKnow)}</p>
               </div>
             ) : null}
           </>

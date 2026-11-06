@@ -64,12 +64,49 @@ function partOf(shape: WorkplaneShape, topId: string): Part {
   };
 }
 
-/** Every single shape, grouped ones included, each tagged with the top-level object it is in. */
+/**
+ * A grouped part placed in the world. The editor keeps a group's parts in the group's own frame
+ * (centred on it, from its bottom) and stretches them with the group, so a moved or resized
+ * group moves its parts with it. Tilts of a whole group are left out: the box checks don't need them.
+ */
+function placeChild(group: WorkplaneShape, child: WorkplaneShape, scale: [number, number, number]): WorkplaneShape {
+  const [sx, sy, sz] = scale;
+  const turn = ((group.rotation ?? 0) * Math.PI) / 180;
+  const lx = child.x * sx;
+  const lz = child.z * sz;
+  const width = shapeWidth(child) * sx;
+  const depth = shapeDepth(child) * sz;
+  return {
+    ...child,
+    x: group.x + lx * Math.cos(turn) + lz * Math.sin(turn),
+    z: group.z - lx * Math.sin(turn) + lz * Math.cos(turn),
+    elevation: (group.elevation ?? 0) + (child.elevation ?? 0) * sy,
+    width,
+    depth,
+    size: Math.max(width, depth),
+    height: child.height * sy,
+    rotation: (child.rotation ?? 0) + (group.rotation ?? 0),
+  };
+}
+
+function groupScale(group: WorkplaneShape): [number, number, number] {
+  const children = group.groupedShapes ?? [];
+  const bounds = children.map((child) => boxOf(child));
+  const span = (low: (box: Box) => number, high: (box: Box) => number) => Math.max(...bounds.map(high)) - Math.min(...bounds.map(low));
+  const baseW = group.groupedBaseWidth ?? span((box) => box.minX, (box) => box.maxX);
+  const baseH = group.groupedBaseHeight ?? span((box) => box.minY, (box) => box.maxY);
+  const baseD = group.groupedBaseDepth ?? span((box) => box.minZ, (box) => box.maxZ);
+  return [shapeWidth(group) / Math.max(0.001, baseW), group.height / Math.max(0.001, baseH), shapeDepth(group) / Math.max(0.001, baseD)];
+}
+
+/** Every single shape, grouped ones included, placed in the world and tagged with the top-level object it is in. */
 export function allParts(scene: LessonScene): Part[] {
   const out: Part[] = [];
   const walk = (shape: WorkplaneShape, topId: string) => {
-    if (shape.groupedShapes?.length) shape.groupedShapes.forEach((child) => walk(child, topId));
-    else out.push(partOf(shape, topId));
+    if (shape.groupedShapes?.length) {
+      const scale = groupScale(shape);
+      shape.groupedShapes.forEach((child) => walk(placeChild(shape, child, scale), topId));
+    } else out.push(partOf(shape, topId));
   };
   for (const shape of scene.shapes) {
     if (shape.kind === "ruler") continue;
@@ -108,12 +145,12 @@ export function findBody(scene: LessonScene) {
   return standing.sort((a, b) => b.w * b.h * b.d - a.w * a.h * a.d)[0] ?? null;
 }
 
-/** The head: a round part above the middle of the body, the biggest one there. */
+/** The head: a round part on top of the body. Hair made from a bigger copy of the head is round too, so the smallest one wins. */
 export function findHead(scene: LessonScene) {
   const body = findBody(scene);
   if (!body) return null;
   const round = solids(scene).filter((part) => ROUND_KINDS.includes(part.kind) && part.cy > body.box.maxY - inches(0.5) && part.w > inches(1.5));
-  return round.sort((a, b) => b.w - a.w)[0] ?? null;
+  return round.sort((a, b) => a.w - b.w)[0] ?? null;
 }
 
 /** The obi: a ring-shaped or round part around the body's middle, wider than the body, short. */
@@ -184,6 +221,24 @@ export function connectedAndPrintable(scene: LessonScene): CheckResult {
   return pass();
 }
 
+/** A length in mm as inches in 64ths, the way the editor's rulers and handles show it: "2 5/8 in", "55/64 in". */
 export function formatInches(mm: number) {
-  return `${(mm / IN).toFixed(2).replace(/\.?0+$/, "")} in`;
+  return `${fraction(mm / IN)} in`;
 }
+
+export function fraction(inchValue: number) {
+  const steps = Math.round(Math.abs(inchValue) * 64);
+  const whole = Math.floor(steps / 64);
+  let part = steps % 64;
+  let den = 64;
+  while (part && part % 2 === 0) {
+    part /= 2;
+    den /= 2;
+  }
+  const sign = inchValue < 0 && steps ? "-" : "";
+  if (!part) return `${sign}${whole}`;
+  return whole ? `${sign}${whole} ${part}/${den}` : `${sign}${part}/${den}`;
+}
+
+/** Parts grouped together with holes in the same top-level object. */
+export const isHollowed = (part: Part) => Boolean(part.shape.edgeTreatments?.some((entry) => entry.kind === "shell"));
