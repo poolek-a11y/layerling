@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import kokeshi from "@/lib/lessons/kokeshi";
 import { sectionAchieved, sectionPages, skillsUsed } from "@/lib/lessons";
 import { allParts, floatingObjects, inches } from "@/lib/lessons/sceneChecks";
-import { toMetric } from "@/lib/lessons/units";
+import { toDecimalInches, toMetric } from "@/lib/lessons/units";
 import { isLessonId, lessonLink } from "@/lib/lessons/catalog";
 import type { LessonStep } from "@/lib/lessons/types";
 import type { ShapeKind, WorkplaneShape } from "@/types/layerling";
@@ -84,8 +84,7 @@ describe("Kokeshi Maker lesson", () => {
   it("walks from the welcome through freestyle with unique step ids", () => {
     expect(kokeshi.sections.map((section) => section.id)).toEqual(["welcome", "body", "head", "hair", "kimono", "armor", "face", "accessories", "print", "freestyle"]);
     const ids = kokeshi.sections.flatMap((section) => [...(section.steps ?? []), ...(section.choices ?? []).flatMap((choice) => choice.steps), ...(section.after ?? [])].map((entry) => entry.id));
-    // The bob's 7 steps are shared by three hair choices; every other id is its own.
-    expect(new Set(ids).size).toBe(ids.length - 14);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it("asks for the design to be named Kokeshi_name", () => {
@@ -126,7 +125,7 @@ describe("Kokeshi Maker lesson", () => {
     expect(run("head-align", [body(), small]).message).toMatch(/Centre/);
     expect(run("head-align", [body(), shape("sphere", { w: 0.8, h: 0.8 })]).message).toMatch(/Lift/);
     expect(run("head-align", [body(), shape("sphere", { w: 0.8, h: 0.8 }, { y: inches(4) })]).ok).toBe(true);
-    expect(run("head-size", [body(), shape("sphere", { w: 0.8, h: 0.8 }, { y: inches(4) })]).message).toMatch(/51\/64 in across.*2 5\/8 in.*bigger/);
+    expect(run("head-size", [body(), shape("sphere", { w: 0.8, h: 0.8 }, { y: inches(4) })]).message).toMatch(/0.80 in across.*2 5\/8 in.*bigger/);
     expect(run("head-size", [body(), head()]).ok).toBe(true);
     expect(run("head-size", [body(), shape("sphere", { w: 2.625, h: 3.25 }, { y: inches(3.875) })]).message).toMatch(/no longer round/);
     expect(run("head-sink", [body(), head()]).ok).toBe(true);
@@ -153,6 +152,17 @@ describe("Kokeshi Maker lesson", () => {
     expect(run("bob-hollow", [body(), theHead, long, scoop]).ok).toBe(true);
     expect(run("bob-group", [body(), theHead, group([long, bangs, scoop])]).ok).toBe(true);
     expect(run("bob-group", [group([body(), theHead, long, bangs, scoop])]).message).toMatch(/only the hair/);
+  });
+
+  it("keeps the half sphere bob: lengthened, then hollowed with Hollow", () => {
+    const theHead = head();
+    const dome = shape("halfSphere", { w: 2.875, h: 1.4 }, { y: inches(5.2) });
+    expect(run("hbob-place", [body(), theHead, dome]).ok).toBe(true);
+    expect(run("hbob-lengthen", [body(), theHead, dome]).ok).toBe(false);
+    const bob = shape("halfSphere", { w: 2.875, h: 2.25 }, { y: inches(4.375) });
+    expect(run("hbob-lengthen", [body(), theHead, bob]).ok).toBe(true);
+    expect(run("hbob-hollow", [body(), theHead, bob]).ok).toBe(false);
+    expect(run("hbob-hollow", [body(), theHead, { ...bob, edgeTreatments: [{ kind: "shell" } as never] }]).ok).toBe(true);
   });
 
   it("checks pigtails are mirror images", () => {
@@ -209,8 +219,9 @@ describe("Kokeshi Maker lesson", () => {
   it("shows each section's menu first, then the chosen steps", () => {
     const hairSection = kokeshi.sections.find((section) => section.id === "hair")!;
     expect(sectionPages(hairSection, []).map((page) => page.kind)).toEqual(["menu"]);
-    const bun = sectionPages(hairSection, ["bun"]);
+    const bun = sectionPages(hairSection, ["bun", "bob"]);
     expect(bun.map((page) => (page.kind === "step" ? page.step.id : "menu"))).toEqual(["menu", "bob-place", "bob-lengthen", "bob-bangs", "bob-feather", "bob-hollow", "bob-fit", "bob-group", "bun"]);
+    expect(sectionPages(hairSection, ["bob-half"]).map((page) => (page.kind === "step" ? page.step.id : "menu"))).toEqual(["menu", "hbob-place", "hbob-lengthen", "hbob-hollow", "hbob-bangs", "hbob-feather", "hbob-fit", "hbob-group"]);
     const kimono = kokeshi.sections.find((section) => section.id === "kimono")!;
     expect(sectionPages(kimono, ["sash"]).map((page) => (page.kind === "step" ? page.step.id : "menu"))).toEqual(["menu", "obi", "sash-cord", "sash-bow", "raised-engraved"]);
   });
@@ -241,6 +252,12 @@ describe("Kokeshi Maker lesson", () => {
     expect(toMetric("Make it about 2 5/8 in across.")).toBe("Make it about 67 mm across.");
     expect(toMetric("about 3/4 x 3/4 x 1 3/8 in")).toBe("about 19 x 19 x 35 mm");
     expect(toMetric("It should be 6 to 8 in tall.")).toBe("It should be 152 to 203 mm tall.");
+  });
+
+  it("reads sizes as decimal inches by default", () => {
+    expect(toDecimalInches("a 2 1/4 in copy of a 2 in head")).toBe("a 2.25 in copy of a 2 in head");
+    expect(toDecimalInches("about 2 5/8 in, 1/32 in wide")).toBe("about 2.63 in, 0.031 in wide");
+    expect(toDecimalInches("Your body is 55/64 in wide.")).toBe("Your body is 0.86 in wide.");
   });
 
   it("links LayerLab tutorials to the lesson", () => {

@@ -17645,7 +17645,7 @@ export function LayerlingEditor({
               ...workspaceSettingsRef.current,
               units,
               scale: normalizeScaleForUnits(units, workspaceSettingsRef.current.scale),
-              ...(units === "Imperial" ? { inchFormat: "fraction" as const } : {}),
+              ...(units === "Imperial" ? { inchFormat: "decimal" as const } : {}),
             },
             snap: snapGridRef.current,
           })}

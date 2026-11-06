@@ -54,6 +54,8 @@ export type LessonProgress = {
   /** Sections achieved (see sectionAchieved), for the tick in the list and stars only once. */
   finished: string[];
   collapsed?: boolean;
+  /** The design was switched to the lesson's units once, when the lesson started. */
+  unitsSet?: boolean;
 };
 
 export function loadProgress(projectId: string): LessonProgress | null {

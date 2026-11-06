@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Compass, Lightbulb, PencilRuler, Sparkles, X } from "lucide-react";
 import { LessonFigure } from "@/components/lessons/LessonFigure";
-import { lessonText } from "@/lib/lessons/units";
+import { lessonText, type LessonUnits } from "@/lib/lessons/units";
 import {
   LESSONS,
   loadProgress,
@@ -31,9 +31,9 @@ type Props = {
   /** The design's name: the lesson asks for Kokeshi_yourname. */
   projectName?: string;
   units: string;
-  /** "decimal" when inches show as 1.625 instead of 1 5/8. */
+  /** "fraction" when inches show as 1 5/8 instead of 1.625. */
   inchFormat?: string;
-  /** Switches the workspace to the lesson's units (inches as fractions). */
+  /** Switches the workspace to these units ("Imperial" shows inches as decimals). */
   onUseUnits: (units: string) => void;
   /** The orange outlines of where the current step's part goes, for the 3D view; null for none. */
   onGhostChange?: (ghost: GhostPart[] | null) => void;
@@ -64,6 +64,20 @@ export function LessonPanel({ projectId, shapes, projectName, units, inchFormat,
     setProgress(started);
   }, [projectId]);
 
+  // A new lesson design starts in the lesson's units (decimal inches for Kokeshi Maker), once:
+  // after that the student's own choice of units stands.
+  const lessonUnits = progress ? LESSONS[progress.lessonId]?.units : undefined;
+  const unitsSettled = !progress || progress.unitsSet || (units === lessonUnits && (units !== "Imperial" || inchFormat === "decimal"));
+  useEffect(() => {
+    if (!progress || progress.unitsSet) return;
+    if (unitsSettled) {
+      setProgress((current) => (current ? { ...current, unitsSet: true } : current));
+      return;
+    }
+    if (lessonUnits) onUseUnits(lessonUnits);
+    // Runs again when the workspace's units change, until they are the lesson's.
+  }, [progress, unitsSettled, lessonUnits, units, inchFormat]);
+
   useEffect(() => {
     if (projectId && progress) saveProgress(projectId, progress);
   }, [projectId, progress]);
@@ -86,6 +100,9 @@ export function LessonPanel({ projectId, shapes, projectName, units, inchFormat,
 
   const lesson = progress ? LESSONS[progress.lessonId] : null;
   const metric = Boolean(lesson && lesson.units === "Imperial" && units !== "Imperial");
+  // Lessons are written in fractions of an inch; students read them as decimal inches unless
+  // their workspace shows fractions or millimetres.
+  const textUnits: LessonUnits = metric ? "metric" : inchFormat === "fraction" ? "fraction" : "decimal";
   const section: LessonSection | null = lesson && progress ? lesson.sections[Math.min(progress.section, lesson.sections.length - 1)] : null;
   const chosen = section && progress ? progress.chosen[section.id] ?? [] : [];
   const pages = useMemo(() => (section ? sectionPages(section, chosen) : []), [section, chosen]);
@@ -221,7 +238,7 @@ export function LessonPanel({ projectId, shapes, projectName, units, inchFormat,
   }
 
   // Lessons are written in inches; a student working in millimetres reads every size in millimetres.
-  const tx = (text: string) => lessonText(text, metric);
+  const tx = (text: string) => lessonText(text, textUnits);
 
   const nextBlocked = !ownWay && ((page?.kind === "menu" && !chosen.length) || (result !== null && !result.ok));
   const isLast = progress.section === lesson.sections.length - 1 && (ownWay || pageIndex >= pages.length - 1);
@@ -258,8 +275,8 @@ export function LessonPanel({ projectId, shapes, projectName, units, inchFormat,
           <span>Sizes in</span>
           <button type="button" className={!metric ? "active" : ""} aria-pressed={!metric} onClick={() => onUseUnits("Imperial")}>Inches</button>
           <button type="button" className={metric ? "active" : ""} aria-pressed={metric} onClick={() => onUseUnits("Metric (Default)")}>Millimetres</button>
-          {!metric && inchFormat === "decimal" ? (
-            <button type="button" className="lesson-link-button" onClick={() => onUseUnits("Imperial")}>Show fractions</button>
+          {textUnits === "fraction" ? (
+            <button type="button" className="lesson-link-button" onClick={() => onUseUnits("Imperial")}>Show decimals</button>
           ) : null}
         </div>
       ) : null}
