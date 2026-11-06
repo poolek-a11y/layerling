@@ -173,7 +173,7 @@ const welcome: LessonStep[] = [
   {
     id: "plan",
     title: "Your choices",
-    body: "You'll build your doll from simple shapes, one part at a time, and choose at each step:\n\nBody: cylinder, flat-bottomed sphere, or cone (pointed or rounded).\n\nHead: a sphere sized to fit your body.\n\nHair or helmet: bob, bob with a bun, bob with pigtails, or a samurai helmet.\n\nKimono: an obi for everyone, then sleeves, a sash with a bow, a collar, a flower pattern or a wrapped design.\n\nArmor (optional): chest plate, shoulder guards, skirt plates.\n\nFace: eyes, brows, mouth and cheeks.\n\nAccessories: fan, sword, umbrella, flower or hair ornament.\n\nThen you'll check it, bundle it in its print colours and print it.",
+    body: "You'll build your doll from simple shapes, one part at a time, and choose at each step:\n\nBody: cylinder, flat-bottomed sphere, or cone (pointed or rounded).\n\nHead: a sphere sized to fit your body.\n\nHair or helmet: a bob made from a half sphere or from a copy of the head, with a bun or pigtails if you like, or a samurai helmet.\n\nKimono: an obi for everyone, then sleeves, a sash with a bow, a collar, a flower pattern or a wrapped design.\n\nArmor (optional): chest plate, shoulder guards, skirt plates.\n\nFace: eyes, brows, mouth and cheeks.\n\nAccessories: fan, sword, umbrella, flower or hair ornament.\n\nThen you'll check it, bundle it in its print colours and print it.",
     figure: { parts: DRESSED, caption: "The parts you'll build, from the bottom up." },
   },
   {
@@ -389,6 +389,21 @@ const HAIR_EXTRA = 0.25;
 /** The hole that hollows the hair: a copy of the head made a Hole, about the head's size. */
 const headHole = (scene: LessonScene, head: Part) => holes(scene).find((part) => (part.kind === "sphere" || part.kind === "ellipse") && Math.abs(part.w - head.w) <= inches(0.2) && touches(part, head));
 
+/** Thin Wedge holes along the edge of the bangs cut wisps of hair. */
+function featherStep(id: string): LessonStep {
+  return {
+    id,
+    title: "Feather the bangs",
+    body: "Drag a Wedge (the triangle shape) and make it a Hole. Make it very thin, 1/32 in wide (or 1/64 in for finer wisps), and about 3/8 in tall. Turn it point up and place it along the bottom edge of the bangs so it cuts a thin wisp. Duplicate it (Ctrl+D) and move each copy a little along the edge for a feathered look.",
+    skill: "Duplicate",
+    figure: { parts: [...DOLL, done(BOB), hole(BANGS), ...[-0.6, -0.3, 0, 0.3, 0.6].map((x) => hole({ shape: "tri", x, y: HEAD_Y + 1.55, w: 0.08, h: 0.375 }))], caption: "Thin wedge holes cut wisps into the bangs." },
+    check: needHair((hair, _head, scene) => (holes(scene).some((part) => part.kind === "wedge" && touches(part, hair, 1)) ? pass() : fail("Add a thin Wedge Hole along the edge of the bangs."))),
+    hint: "So thin a wedge is hard to grab: type its size in the shape's card instead of dragging handles.",
+  };
+}
+
+/* The bob the poster teaches: a copy of the head, a little bigger, stretched down and hollowed by
+   another copy of the head made a Hole. */
 const bobSteps: LessonStep[] = [
   {
     id: "bob-place",
@@ -430,14 +445,7 @@ const bobSteps: LessonStep[] = [
     check: needHair((hair, head, scene) => (holes(scene).some((part) => part.kind === "box" && touches(part, hair) && part.cz > head.cz) ? pass() : fail("Add a Box Hole at the front of the hair, over the face."))),
     hint: "The front of the doll faces the FRONT side of the view cube.",
   },
-  {
-    id: "bob-feather",
-    title: "Feather the bangs",
-    body: "Drag a Wedge (the triangle shape) and make it a Hole, about 3/8 in wide. Turn it point up and place it along the bottom edge of the bangs so it cuts a small notch. Duplicate it (Ctrl+D) and move each copy along the edge for a feathered look.",
-    skill: "Duplicate",
-    figure: { parts: [...DOLL, done(BOB), hole(BANGS), hole({ shape: "tri", x: -0.5, y: HEAD_Y + 1.6, w: 0.375, h: 0.35 }), hole({ shape: "tri", x: 0, y: HEAD_Y + 1.6, w: 0.375, h: 0.35 }), hole({ shape: "tri", x: 0.5, y: HEAD_Y + 1.6, w: 0.375, h: 0.35 })] },
-    check: needHair((hair, _head, scene) => (holes(scene).some((part) => part.kind === "wedge" && touches(part, hair, 1)) ? pass() : fail("Add a Wedge Hole along the edge of the bangs."))),
-  },
+  featherStep("bob-feather"),
   {
     id: "bob-hollow",
     title: "Hollow the hair",
@@ -470,6 +478,62 @@ const bobSteps: LessonStep[] = [
       return pass();
     }),
     success: "A bob: longer at the back and sides, bangs at the front, hollow inside.",
+  },
+];
+
+/* The bob from a Half Sphere: lengthened, hollowed with Hollow, bangs cut and feathered, then
+   fitted with the half sphere's card. */
+const halfBobSteps: LessonStep[] = [
+  {
+    id: "hbob-place",
+    title: "Start the hair",
+    body: "Drag a Half Sphere onto the workplane. Make it 2 7/8 in wide and long, a little wider than the head. Select it and the head and Align their centres both ways, then lift it onto the top of the head.",
+    skill: "Align",
+    figure: { parts: [...DOLL, added({ shape: "dome", x: 0, y: HEAD_Y + HEAD_W / 2, w: 2.875, h: 1.44 })] },
+    ghost: (scene) => onHead(scene, (head) => [{ kind: "halfSphere", x: head.cx, z: head.cz, y: head.cy, w: head.w + inches(0.25), d: head.d + inches(0.25), h: inches(1.44) }]),
+    check: needHair((hair, head) => (centred(hair, head) ? pass() : fail("Align the half sphere to the centre of the head."))),
+  },
+  {
+    id: "hbob-lengthen",
+    title: "Lengthen it into a bob",
+    body: "A bob is longer at the sides and back than at the front. Lower the half sphere until its bottom edge is about 1/2 in above where the head meets the body. Then make it taller, about 2 1/4 in, until it covers the top of the head again.",
+    skill: "Resize on one axis",
+    figure: { parts: [...DOLL, added(BOB)], caption: "The hair now reaches down to the jaw." },
+    ghost: (scene) => onHead(scene, (head) => [{ kind: "halfSphere", x: head.cx, z: head.cz, y: head.box.minY + inches(0.5), w: head.w + inches(0.25), d: head.d + inches(0.25), h: head.box.maxY + inches(0.125) - (head.box.minY + inches(0.5)) }]),
+    check: needHair((hair, head) => {
+      if (hair.box.minY > head.cy - inches(0.5)) return fail(`The hair ends ${formatInches(hair.box.minY - head.box.minY)} above the bottom of the head. Lower it and make it taller so it reaches about 1/2 in from the bottom.`);
+      if (hair.box.maxY < head.box.maxY) return fail("Make the hair taller so it covers the top of the head.");
+      return pass();
+    }),
+  },
+  {
+    id: "hbob-hollow",
+    title: "Hollow the hair",
+    body: "With the half sphere selected, use Hollow (in Edges & Walls). Give it a wall of 1/8 in and leave the bottom open. Now the hair is a shell that fits over the head instead of a solid block.",
+    skill: "Hollow",
+    figure: { parts: [...DOLL, added(BOB)] },
+    check: needHair((hair) => (isHollowed(hair) ? pass() : fail("Select the half sphere and use Hollow with a 1/8 in wall, open at the bottom."))),
+    didYouKnow: "Hollow keeps an even wall all the way round, so the hair has the same thickness everywhere.",
+  },
+  { ...bobSteps.find((entry) => entry.id === "bob-bangs")!, id: "hbob-bangs" },
+  featherStep("hbob-feather"),
+  {
+    id: "hbob-fit",
+    title: "Fit it to the head",
+    body: "Look at the doll from the front and the side. Use the half sphere's card (its width, length, height and Steps) to make the hair hug the head with no gap between hair and head.",
+    skill: "Properties panel",
+    check: needHair((hair, head) => (touches(hair, head) && hair.w <= head.w + inches(0.6) ? pass() : fail(`The hair is ${formatInches(hair.w)} across and the head ${formatInches(head.w)}. Make it touch the head all round and no more than about 1/4 in wider on each side.`))),
+  },
+  {
+    id: "hbob-group",
+    title: "Align and group",
+    body: "Select the hair and all its holes (the bangs box and the wedges), but not the head. Align them to the head's centre left to right, then press Group. The holes cut the hair.",
+    skill: "Group",
+    check: needHair((hair, head, scene) => {
+      if (!holes(scene).some((part) => part.topId === hair.topId)) return fail("Select the hair and its holes and press Group.");
+      return head.topId === hair.topId ? fail("The head is in the hair's group. Undo, and select only the hair and its holes.") : pass();
+    }),
+    success: "A bob: longer at the back and sides, bangs at the front.",
   },
 ];
 
@@ -799,11 +863,13 @@ const kokeshi: Lesson = {
       title: "Hair or helmet",
       goal: "Give your doll hair or a helmet that covers the top of the head.",
       skills: ["Align", "Resize on one axis", "Hollow", "Hole", "Group", "Mirror", "Rotate"],
+      multi: true,
       choices: [
-        { id: "bob", label: "Bob", blurb: "Longer at the sides and back, with bangs.", steps: bobSteps },
-        { id: "bun", label: "Bob with a bun", blurb: "A bob with a bun on top.", steps: [...bobSteps, bunStep] },
-        { id: "pigtails", label: "Bob with pigtails", blurb: "A bob with two matching tails.", steps: [...bobSteps, ...pigtailSteps] },
-        { id: "helmet", label: "Helmet", blurb: "A samurai-style helmet with a crest.", steps: helmetSteps },
+        { id: "bob-half", label: "Bob from a Half Sphere", blurb: "Lengthen a half sphere, Hollow it, cut and feather bangs.", steps: halfBobSteps },
+        { id: "bob", label: "Bob from a copy of the head", blurb: "Copy the head 1/4 in bigger, stretch it, hollow it with a head-sized hole.", steps: bobSteps },
+        { id: "bun", label: "Add a bun", blurb: "A bun on top of your bob. Pick a bob too.", steps: [bunStep] },
+        { id: "pigtails", label: "Add pigtails", blurb: "Two matching tails on your bob. Pick a bob too.", steps: pigtailSteps },
+        { id: "helmet", label: "Helmet", blurb: "A samurai-style helmet with a crest, instead of hair.", steps: helmetSteps },
       ],
       ownWayChecks: [
         { label: "Hair or a helmet covers the top of the head", check: needHair(() => pass()) },

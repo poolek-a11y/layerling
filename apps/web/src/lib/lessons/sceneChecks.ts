@@ -221,9 +221,12 @@ export function connectedAndPrintable(scene: LessonScene): CheckResult {
   return pass();
 }
 
-/** A length in mm as inches in 64ths, the way the editor's rulers and handles show it: "2 5/8 in", "55/64 in". */
+/** A length in mm in inches: 64ths ("2 5/8 in", "55/64 in") when it is on that grid, else two decimals. The panel turns it into the student's units. */
 export function formatInches(mm: number) {
-  return `${fraction(mm / IN)} in`;
+  const value = mm / IN;
+  // Off the 1/64 grid (a typed 2 cm, a scaled part), the exact size reads better as a decimal.
+  if (Math.abs(value * 64 - Math.round(value * 64)) > 0.1) return `${value.toFixed(2)} in`;
+  return `${fraction(value)} in`;
 }
 
 export function fraction(inchValue: number) {
