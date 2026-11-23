@@ -5,10 +5,11 @@ import manifoldModule, { type ManifoldToplevel } from "manifold-3d";
 import { OcctKernel } from "occt-wasm";
 import { buildStrokedSketchSolid } from "@/lib/cadSketchStroke";
 import { buildMotifLayer, MOTIF_BUILDERS } from "@/lib/lessons/mandalaMotifs";
+import { offsetLayerProfile } from "@/lib/lessons/mandalaOffset";
 import { cadSketchRegions } from "@/lib/sketchCadProfile";
 import { pathWire } from "@/lib/sketchCadWire";
 import { strokedSketchProfile } from "@/lib/sketchStroke";
-import type { SketchProfile } from "@/types/layerling";
+import type { SketchProfile, WorkplaneShape } from "@/types/layerling";
 
 /*
  * Every mandala shape builder's ring built the way the sketch worker builds it: the kernel strokes
@@ -63,4 +64,16 @@ describe("mandala shape builders with the real OCCT kernel", () => {
       console.log(`${builder.id}: ${how}, ${(box.xmax - box.xmin).toFixed(1)} mm across`);
     });
   }
+
+  it("builds offset layers of a whole bottom layer, a step smaller each time", () => {
+    const body = (profile: SketchProfile): WorkplaneShape => ({ id: "b", name: "b", kind: "mesh", color: "#000", x: 0, z: 0, size: 1, width: 1, depth: 1, height: 2.5, rotation: 0, sketchProfile: profile });
+    let layer = [body(buildMotifLayer("scallop-disc").profile), body(buildMotifLayer("lotus").profile), body(buildMotifLayer("center").profile)];
+    for (const dropOuter of [false, true, false]) {
+      const profile = offsetLayerProfile(runtime, layer, { offset: 1, line: 2, dropOuter })!;
+      let solid = buildStrokedSketchSolid(kernel, profile, profile.stroke!, 2.5);
+      if (!solid) solid = extrudeArea(strokedSketchProfile(runtime, profile)!, 2.5);
+      expect(kernel.getVolume(solid)).toBeGreaterThan(1);
+      layer = [body(profile)];
+    }
+  });
 });

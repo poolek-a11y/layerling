@@ -560,3 +560,11 @@ html[data-lesson-open] .workplane-stage .camera-controls {
 .motif-step-result {
   margin-top: 8px;
 }
+
+.motif-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}

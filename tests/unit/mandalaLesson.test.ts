@@ -1,15 +1,17 @@
 import manifoldModule, { type ManifoldToplevel } from "manifold-3d";
 import { beforeAll, describe, expect, it } from "vitest";
 import mandala from "@/lib/lessons/mandala";
+import mandalaCross from "@/lib/lessons/mandalaCross";
+import { offsetLayerProfile } from "@/lib/lessons/mandalaOffset";
 import { LESSONS, sectionPages } from "@/lib/lessons";
 import { isLessonId, LESSON_OPTIONS } from "@/lib/lessons/catalog";
 import { buildMotifLayer, cleanMotifParams, MOTIF_BUILDERS, motifBuilder, motifDefaults } from "@/lib/lessons/mandalaMotifs";
 import { mandalaCentreOf, mandalaPlaceOn } from "@/lib/lessons/mandalaPlace";
 import { inches } from "@/lib/lessons/sceneChecks";
-import type { LessonStep } from "@/lib/lessons/types";
+import type { Lesson, LessonStep } from "@/lib/lessons/types";
 import { orderedCadSketchPaths } from "@/lib/sketchCadProfile";
 import { strokedSketchProfile } from "@/lib/sketchStroke";
-import type { WorkplaneShape } from "@/types/layerling";
+import type { SketchProfile, WorkplaneShape } from "@/types/layerling";
 
 /*
  * Layered Mandala: the shape builders draw sketches the sketch tool can build, and the lesson's
@@ -107,69 +109,76 @@ function ring(diameter: number, height: number, bottom: number, extra: Partial<W
   };
 }
 
-const steps = (sectionId: string, chosen: string[] = []) => {
-  const section = mandala.sections.find((entry) => entry.id === sectionId)!;
+const lessonSteps = (lesson: Lesson, sectionId: string, chosen: string[] = []) => {
+  const section = lesson.sections.find((entry) => entry.id === sectionId)!;
   return sectionPages(section, chosen).flatMap((page) => (page.kind === "step" ? [page.step] : []));
 };
-const step = (sectionId: string, id: string, chosen: string[] = []): LessonStep => steps(sectionId, chosen).find((entry) => entry.id === id)!;
+const step = (lesson: Lesson, sectionId: string, id: string, chosen: string[] = []): LessonStep => lessonSteps(lesson, sectionId, chosen).find((entry) => entry.id === id)!;
 const run = (target: LessonStep, shapes: WorkplaneShape[], projectName = "Mandala_Maya") => target.check!({ shapes, projectName });
 
-describe("Layered Mandala lesson", () => {
+/** A finished bottom layer: outline, petals and centre circle on the plate. */
+const bottom = () => [ring(4.2, 0.1, 0), ring(3.9, 0.1, 0), ring(1.1, 0.1, 0)];
+
+describe.each([
+  { lesson: mandala, prefix: "Mandala", name: "mandala", choice: "lotus", base: "mandala-base", petals: "mandala-petals-lotus", circle: "mandala-centre-circle" },
+  { lesson: mandalaCross, prefix: "Cross", name: "cross", choice: "round", base: "cross-outline-round", petals: "cross-petals", circle: "cross-centre-circle" },
+])("$lesson.title lesson", ({ lesson, prefix, name, choice, base, petals, circle }) => {
   it("is offered to LayerLab tutorials", () => {
-    expect(LESSONS.mandala).toBe(mandala);
-    expect(isLessonId("mandala")).toBe(true);
-    expect(LESSON_OPTIONS.some((entry) => entry.id === "mandala")).toBe(true);
-    expect(mandala.library).toBe("mandala");
+    expect(LESSONS[lesson.id]).toBe(lesson);
+    expect(isLessonId(lesson.id)).toBe(true);
+    expect(LESSON_OPTIONS.some((entry) => entry.id === lesson.id)).toBe(true);
+    expect(lesson.library).toBe("mandala");
+  });
+
+  it("builds five layers", () => {
+    expect(lesson.sections.map((section) => section.id).filter((id) => id.startsWith("layer-"))).toEqual(["layer-1", "layer-2", "layer-3", "layer-4", "layer-5"]);
   });
 
   it("gives every step a unique id", () => {
-    const ids = mandala.sections.flatMap((section) => [
-      ...(section.steps ?? []), ...(section.choices ?? []).flatMap((choice) => choice.steps), ...(section.after ?? []),
+    const ids = lesson.sections.flatMap((section) => [
+      ...(section.steps ?? []), ...(section.choices ?? []).flatMap((entry) => entry.steps), ...(section.after ?? []),
     ].map((entry) => entry.id));
     expect(new Set(ids).size).toBe(ids.length);
   });
 
   it("asks for the design's name", () => {
-    const name = step("welcome", "mandala-name");
-    expect(run(name, [], "Untitled design 1").ok).toBe(false);
-    expect(run(name, [], "Mandala_Maya").ok).toBe(true);
+    const naming = step(lesson, "welcome", `${name}-name`);
+    expect(run(naming, [], "Untitled design 1").ok).toBe(false);
+    expect(run(naming, [], `${prefix}_Maya`).ok).toBe(true);
   });
 
-  it("checks the base's size", () => {
-    const base = step("base", "mandala-base");
-    expect(run(base, []).ok).toBe(false);
-    expect(run(base, [ring(2, 0.12, 0)]).message).toMatch(/at least 3 in/);
-    expect(run(base, [ring(4.2, 0.12, 0)]).ok).toBe(true);
+  it("builds the bottom layer from pieces level with each other", () => {
+    const outline = step(lesson, "layer-1", base, [choice]);
+    expect(run(outline, []).ok).toBe(false);
+    expect(run(outline, [ring(2, 0.1, 0)]).message).toMatch(/at least 3 in/);
+    expect(run(outline, [ring(4.2, 0.1, 0)]).ok).toBe(true);
+    const inside = step(lesson, "layer-1", petals, [choice]);
+    expect(run(inside, [ring(4.2, 0.1, 0)]).ok).toBe(false);
+    // On top instead of level: not part of the bottom layer.
+    expect(run(inside, [ring(4.2, 0.1, 0), ring(3.9, 0.1, 0.1)]).ok).toBe(false);
+    expect(run(inside, [ring(4.2, 0.1, 0), ring(3.9, 0.1, 0)]).ok).toBe(true);
+    expect(run(step(lesson, "layer-1", circle, [choice]), bottom()).ok).toBe(true);
   });
 
-  it("wants each ring on the one below, in the middle", () => {
-    const petals = step("petals", "mandala-petals-lotus", ["lotus"]);
-    const base = ring(4.2, 0.12, 0);
-    expect(run(petals, [base]).ok).toBe(false);
-    expect(run(petals, [base, ring(3.8, 0.1, 0.12)]).ok).toBe(true);
-    // Off the middle: it slid when it was moved.
-    const slid = run(petals, [base, ring(3.8, 0.1, 0.12, { x: inches(0.5) })]);
-    expect(slid.ok).toBe(false);
+  it("stacks offset layers drawn as strokes, in the middle", () => {
+    const two = step(lesson, "layer-2", `${name}-layer2`);
+    expect(run(two, bottom()).ok).toBe(false);
+    expect(run(two, [...bottom(), ring(4.1, 0.1, 0.1)]).ok).toBe(true);
+    const slid = run(two, [...bottom(), ring(4.1, 0.1, 0.1, { x: inches(0.5) })]);
     expect(slid.message).toMatch(/off the middle/);
-    // Floating above the base is not stacked.
-    expect(run(petals, [base, ring(3.8, 0.1, 0.5)]).ok).toBe(false);
+    const solid = ring(4.1, 0.1, 0.1);
+    solid.sketchProfile = { ...solid.sketchProfile!, stroke: undefined };
+    expect(run(two, [...bottom(), solid]).message).toMatch(/stroke/);
+    // Floating above layer 1 is not stacked.
+    expect(run(two, [...bottom(), ring(4.1, 0.1, 0.5)]).ok).toBe(false);
   });
 
-  it("wants the criss-cross ring built with a stroke", () => {
-    const criss = step("criss-cross", "mandala-criss-circles", ["circles"]);
-    const base = ring(4.2, 0.12, 0);
-    const petals = ring(3.8, 0.1, 0.12);
-    expect(run(criss, [base, petals, ring(3.2, 0.1, 0.22)]).ok).toBe(true);
-    const filled = ring(3.2, 0.1, 0.22);
-    filled.sketchProfile = { ...filled.sketchProfile!, stroke: undefined };
-    expect(run(criss, [base, petals, filled]).message).toMatch(/stroke/);
-  });
-
-  it("finishes with a centre button on top", () => {
-    const centre = step("centre", "mandala-centre");
-    const stackOf = [ring(4.2, 0.12, 0), ring(3.8, 0.1, 0.12), ring(3.2, 0.1, 0.22), ring(3.6, 0.08, 0.12)];
-    expect(run(centre, [...stackOf, ring(0.8, 0.12, 0.32)]).ok).toBe(true);
-    expect(run(centre, [...stackOf, ring(2.4, 0.12, 0.32)]).message).toMatch(/top piece/);
+  it("finishes with a centre on layer 5", () => {
+    const centre = step(lesson, "layer-5", `${name}-layer5`);
+    const four = [...bottom(), ring(4.1, 0.1, 0.1), ring(3.6, 0.1, 0.2), ring(3.4, 0.1, 0.3)];
+    expect(run(centre, four).ok).toBe(false);
+    expect(run(centre, [...four, ring(1, 0.1, 0.4)]).ok).toBe(true);
+    expect(run(centre, [...four, ring(3, 0.1, 0.4)]).message).toMatch(/centre is/);
   });
 });
 
@@ -184,5 +193,59 @@ describe("where a new ring goes", () => {
     const box = { minX: 0, maxX: 26, minY: inches(0.12), maxY: inches(0.22), minZ: -14, maxZ: 6 };
     expect(mandalaCentreOf(petals, box)).toEqual({ x: 10, z: -4 });
     expect(mandalaPlaceOn([petals], box)).toEqual({ x: 10, z: -4, elevation: Math.round(inches(0.22) * 1000) / 1000 });
+  });
+});
+
+describe("cross builders", () => {
+  it("draws one closed outline with an arm per count", () => {
+    for (const id of ["cross-round", "cross-pointed"]) {
+      for (const count of [4, 6]) {
+        const paths = orderedCadSketchPaths(buildMotifLayer(id, { count }).profile);
+        expect(paths).toHaveLength(1);
+        expect(paths[0].closed).toBe(true);
+      }
+    }
+  });
+
+  it("makes the bottom arm longer for a Latin cross", () => {
+    const zs = (long: number) => buildMotifLayer("cross-pointed", { long, length: 50, width: 20 }).profile.points.map((point) => point.z);
+    expect(Math.max(...zs(0))).toBeCloseTo(50, 3);
+    expect(Math.max(...zs(25))).toBeCloseTo(75, 3);
+    expect(Math.min(...zs(25))).toBeCloseTo(-50, 3);
+  });
+});
+
+describe("offset layer", () => {
+  /** A layer as the editor holds it: the builder's sketch, standing with its middle at (x, z). */
+  const placed = (builderId: string, x = 0, z = 0): WorkplaneShape => ({ ...ring(1, 0.1, 0), x, z, sketchProfile: buildMotifLayer(builderId).profile });
+  const loops = (profile: SketchProfile) => orderedCadSketchPaths(profile).filter((path) => path.closed).length;
+
+  it("sets every outline in by the offset and strokes it with the line", () => {
+    const profile = offsetLayerProfile(runtime, [placed("ring")], { offset: 1, line: 2, dropOuter: false })!;
+    expect(profile.stroke).toMatchObject({ width: 2, align: "center" });
+    const reach = Math.max(...profile.points.map((point) => Math.hypot(point.x, point.z)));
+    expect(reach).toBeCloseTo(1.8 * 25.4 - 1, 0);
+  });
+
+  it("follows the layer where it stands", () => {
+    const profile = offsetLayerProfile(runtime, [placed("ring", 30, -10)], { offset: 1, line: 2, dropOuter: false })!;
+    const xs = profile.points.map((point) => point.x);
+    const zs = profile.points.map((point) => point.z);
+    expect((Math.min(...xs) + Math.max(...xs)) / 2).toBeCloseTo(30, 0);
+    expect((Math.min(...zs) + Math.max(...zs)) / 2).toBeCloseTo(-10, 0);
+  });
+
+  it("leaves out the outermost outline, a whole ring of petals at once", () => {
+    const layer = [placed("scallop-disc"), placed("lotus"), placed("center")];
+    const all = offsetLayerProfile(runtime, layer, { offset: 0.5, line: 2, dropOuter: false })!;
+    const stepped = offsetLayerProfile(runtime, layer, { offset: 0.5, line: 2, dropOuter: true })!;
+    expect(loops(all)).toBe(1 + 10 + 1);
+    expect(loops(stepped)).toBe(10 + 1);
+    const twice = offsetLayerProfile(runtime, [{ ...ring(1, 0.1, 0), sketchProfile: stepped }], { offset: 0.5, line: 2, dropOuter: true })!;
+    expect(loops(twice)).toBe(1);
+  });
+
+  it("is null for a body without a sketch", () => {
+    expect(offsetLayerProfile(runtime, [{ ...ring(1, 0.1, 0), sketchProfile: undefined }], { offset: 1, line: 2, dropOuter: false })).toBeNull();
   });
 });

@@ -4,7 +4,8 @@ import { useCallback, useMemo } from "react";
 import type { LessonLibraryTools } from "@/components/lessons/MotifLibrary";
 import type { CustomShapeEntry, CustomShapeFolder, CustomShapeLocation } from "@/components/workplane/MyShapesSection";
 import { boundsForShapes } from "@/lib/editorMeshCore";
-import { buildMandalaLayer } from "@/lib/lessons/mandalaBuild";
+import { buildMandalaLayer, buildOffsetLayer } from "@/lib/lessons/mandalaBuild";
+import { strokeWidthOf, type OffsetSettings } from "@/lib/lessons/mandalaOffset";
 import type { MotifParams } from "@/lib/lessons/mandalaMotifs";
 import { mandalaPlaceOn } from "@/lib/lessons/mandalaPlace";
 import type { WorkplaneShape } from "@/types/layerling";
@@ -38,14 +39,37 @@ export function useLessonLibrary(options: Options): LessonLibraryTools {
   const location: CustomShapeLocation = serverAvailable ? "server" : "browser";
   const folder = customShapeFolders.find((entry) => entry.parentId === null && entry.location === location && entry.name === MOTIF_FOLDER) ?? null;
 
-  const addLayer = useCallback(async (builderId: string, params: MotifParams) => {
+  const addLayer = useCallback(async (builderId: string, params: MotifParams, level = false) => {
     const selected = shapesRef.current.filter((shape) => selectedIds.includes(shape.id));
-    const place = mandalaPlaceOn(selected, selected.length ? boundsForShapes(selected) : null);
+    const place = mandalaPlaceOn(selected, selected.length ? boundsForShapes(selected) : null, level);
     setNotice("Building the ring...", true);
     try {
       const layer = await buildMandalaLayer(builderId, params, place);
       commitShapes([...shapesRef.current, layer], [layer.id], `Added ${layer.name}`);
       setNotice(`Added ${layer.name}. Select it and press Edit sketch to change it.`);
+      return true;
+    } catch (error) {
+      noticeError(error);
+      return false;
+    }
+  }, [shapesRef, selectedIds, commitShapes, setNotice, noticeError]);
+
+  const addOffsetLayer = useCallback(async (settings: OffsetSettings) => {
+    const selected = shapesRef.current.filter((shape) => selectedIds.includes(shape.id));
+    if (!selected.length) {
+      setNotice("Select the layer to offset first: click it, or Shift-click every ring of it.");
+      return false;
+    }
+    const box = boundsForShapes(selected);
+    // The new layer's number: one more than the layers that stand below its top.
+    const levels = new Set(shapesRef.current
+      .filter((shape) => (shape.elevation ?? 0) < box.maxY - 0.01)
+      .map((shape) => Math.round((shape.elevation ?? 0) * 10)));
+    setNotice("Building the offset layer...", true);
+    try {
+      const layer = await buildOffsetLayer(selected, settings, Math.round(box.maxY * 1000) / 1000, levels.size + 1);
+      commitShapes([...shapesRef.current, layer], [layer.id], `Added ${layer.name}`);
+      setNotice(`Added ${layer.name}. Select it and add the next one on top.`);
       return true;
     } catch (error) {
       noticeError(error);
@@ -79,5 +103,10 @@ export function useLessonLibrary(options: Options): LessonLibraryTools {
     [folder, customShapeEntries],
   );
 
-  return useMemo(() => ({ selectionCount: selectedIds.length, addLayer, myMotifs, insertMotif, saveMotif }), [selectedIds.length, addLayer, myMotifs, insertMotif, saveMotif]);
+  const selectedLine = useMemo(() => strokeWidthOf(shapesRef.current.filter((shape) => selectedIds.includes(shape.id))), [shapesRef, selectedIds]);
+
+  return useMemo(
+    () => ({ selectionCount: selectedIds.length, selectedLine, addLayer, addOffsetLayer, myMotifs, insertMotif, saveMotif }),
+    [selectedIds.length, selectedLine, addLayer, addOffsetLayer, myMotifs, insertMotif, saveMotif],
+  );
 }

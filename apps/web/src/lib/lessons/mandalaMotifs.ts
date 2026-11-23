@@ -31,6 +31,8 @@ export type MotifParams = {
   height: number;
   /** Turns the whole ring, degrees: half a step puts petals between the petals below. */
   turn: number;
+  /** A cross: how much longer its bottom arm is, mm (0: all arms the same). */
+  long?: number;
 };
 
 export type MotifParamKey = keyof MotifParams;
@@ -61,6 +63,7 @@ const inch = (params: MotifParams): MotifParams => ({
   width: params.width * IN,
   line: params.line * IN,
   height: params.height * IN,
+  long: (params.long ?? 0) * IN,
 });
 
 /** The library, in the order the lesson uses it: a base, rings of petals, criss-cross rings, then the details. */
@@ -68,17 +71,35 @@ export const MOTIF_BUILDERS: MotifBuilder[] = [
   {
     id: "scallop-disc",
     name: "Scalloped base",
-    blurb: "A round base with a wavy edge. The bottom layer everything sits on.",
-    defaults: { count: 16, radius: 2.1, length: 0.15, width: 0, line: 0, height: 0.12, turn: 0 },
+    blurb: "A round outline with a wavy edge: the bottom layer of a round mandala. Line width 0 gives it a closed back.",
+    defaults: { count: 16, radius: 2.1, length: 0.15, width: 0, line: 0.08, height: 0.1, turn: 0 },
     fields: ["count", "radius", "length", "line", "height"],
     single: true,
     color: "#1f6fb2",
   },
   {
+    id: "cross-round",
+    name: "Cross, round ends",
+    blurb: "A cross outline whose arms end in round lobes: the bottom layer of a mandala cross.",
+    defaults: { count: 4, radius: 0, length: 2, width: 0.8, line: 0.08, height: 0.1, turn: 0, long: 0 },
+    fields: ["count", "length", "width", "long", "line", "height", "turn"],
+    single: true,
+    color: "#1f6fb2",
+  },
+  {
+    id: "cross-pointed",
+    name: "Cross, pointed ends",
+    blurb: "A cross outline whose arms flare out to a point.",
+    defaults: { count: 4, radius: 0, length: 2, width: 0.7, line: 0.08, height: 0.1, turn: 0, long: 0 },
+    fields: ["count", "length", "width", "long", "line", "height", "turn"],
+    single: true,
+    color: "#8a5bf0",
+  },
+  {
     id: "lotus",
     name: "Lotus petals",
     blurb: "Round at the bottom, pointed at the tip.",
-    defaults: { count: 10, radius: 0.55, length: 1.4, width: 0.7, line: 0.06, height: 0.1, turn: 0 },
+    defaults: { count: 10, radius: 0.55, length: 1.4, width: 0.7, line: 0.08, height: 0.1, turn: 0 },
     fields: ["count", "radius", "length", "width", "line", "height", "turn"],
     color: "#e7399e",
   },
@@ -120,7 +141,7 @@ export const MOTIF_BUILDERS: MotifBuilder[] = [
     id: "star",
     name: "Star",
     blurb: "One star with as many points as you like.",
-    defaults: { count: 8, radius: 0.5, length: 0.6, width: 0, line: 0, height: 0.1, turn: 0 },
+    defaults: { count: 8, radius: 0.5, length: 0.6, width: 0, line: 0.06, height: 0.1, turn: 0 },
     fields: ["count", "radius", "length", "line", "height", "turn"],
     single: true,
     color: "#ffc93c",
@@ -129,7 +150,7 @@ export const MOTIF_BUILDERS: MotifBuilder[] = [
     id: "diamond",
     name: "Diamonds",
     blurb: "Four straight sides, pointing out.",
-    defaults: { count: 16, radius: 1.55, length: 0.35, width: 0.22, line: 0, height: 0.08, turn: 0 },
+    defaults: { count: 16, radius: 1.55, length: 0.35, width: 0.22, line: 0.05, height: 0.08, turn: 0 },
     fields: ["count", "radius", "length", "width", "line", "height", "turn"],
     color: "#ff5a47",
   },
@@ -137,7 +158,7 @@ export const MOTIF_BUILDERS: MotifBuilder[] = [
     id: "spike",
     name: "Spikes",
     blurb: "Triangles pointing out, like the rays of a sun.",
-    defaults: { count: 24, radius: 1.75, length: 0.3, width: 0.14, line: 0, height: 0.08, turn: 0 },
+    defaults: { count: 24, radius: 1.75, length: 0.3, width: 0.14, line: 0.05, height: 0.08, turn: 0 },
     fields: ["count", "radius", "length", "width", "line", "height", "turn"],
     color: "#ff9e2c",
   },
@@ -145,7 +166,7 @@ export const MOTIF_BUILDERS: MotifBuilder[] = [
     id: "dots",
     name: "Dots",
     blurb: "Round dots in a ring.",
-    defaults: { count: 16, radius: 1.75, length: 0.16, width: 0.16, line: 0, height: 0.08, turn: 0 },
+    defaults: { count: 16, radius: 1.75, length: 0.2, width: 0.2, line: 0.05, height: 0.08, turn: 0 },
     fields: ["count", "radius", "length", "line", "height", "turn"],
     color: "#ffffff",
   },
@@ -170,9 +191,9 @@ export const MOTIF_BUILDERS: MotifBuilder[] = [
   },
   {
     id: "center",
-    name: "Centre button",
-    blurb: "A round button for the very middle.",
-    defaults: { count: 1, radius: 0.35, length: 0, width: 0, line: 0, height: 0.12, turn: 0 },
+    name: "Centre circle",
+    blurb: "A circle round the middle that the petals' inner ends touch. Line width 0 makes it a solid button.",
+    defaults: { count: 1, radius: 0.55, length: 0, width: 0, line: 0.08, height: 0.1, turn: 0 },
     fields: ["radius", "line", "height"],
     single: true,
     color: "#ffc93c",
@@ -280,6 +301,59 @@ function scallopedCircle(count: number, radius: number, depth: number): Outline 
   return { closed: true, nodes };
 }
 
+/** Nodes along a circle from angle `from` to `to` (counter-clockwise), in pieces of at most a quarter turn. */
+function arc(cx: number, cz: number, r: number, from: number, to: number): Node[] {
+  const pieces = Math.max(1, Math.ceil((to - from) / (Math.PI / 2) - 1e-9));
+  const step = (to - from) / pieces;
+  const reach = (4 / 3) * Math.tan(step / 4) * r;
+  const nodes: Node[] = [];
+  for (let index = 0; index <= pieces; index += 1) {
+    const angle = from + index * step;
+    const point = v(cx + r * Math.cos(angle), cz + r * Math.sin(angle));
+    const tangent = v(-Math.sin(angle), Math.cos(angle));
+    nodes.push({
+      ...point,
+      ...(index > 0 ? { in: v(point.x - tangent.x * reach, point.z - tangent.z * reach) } : {}),
+      ...(index < pieces ? { out: v(point.x + tangent.x * reach, point.z + tangent.z * reach) } : {}),
+    });
+  }
+  return nodes;
+}
+
+/**
+ * A cross of `count` arms round the middle, `width` wide, reaching `reach` from the middle (the
+ * arm at a quarter turn `long` further), as one outline. Round ends finish each arm in a lobe
+ * wider than the arm; pointed ends flare out to a tip.
+ */
+function cross(count: number, reach: number, width: number, long: number, ends: "round" | "pointed"): Outline {
+  const h = width / 2;
+  const step = (Math.PI * 2) / count;
+  // The inner corner between two arms, on the line halfway between them.
+  const corner = h / Math.sin(step / 2);
+  const nodes: Node[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const angle = index * step;
+    const place = (node: Node): Node => ({ ...rotate(node, angle), in: node.in && rotate(node.in, angle), out: node.out && rotate(node.out, angle) });
+    nodes.push(place({ ...rotate(v(corner, 0), -step / 2) }));
+    // The arm a quarter turn round (toward the front, +z) is the long one of a Latin cross.
+    const l = Math.max(corner + width, reach + (Math.abs(angle - Math.PI / 2) < 1e-6 ? long : 0));
+    if (ends === "round") {
+      const r = h * 1.45;
+      const cx = l - r;
+      const neck = Math.asin(h / r);
+      const lobe = arc(cx, 0, r, -(Math.PI - neck), Math.PI - neck);
+      // The arm's sides run straight to the lobe's neck.
+      lobe[0] = { ...v(cx - Math.sqrt(r * r - h * h), -h), out: lobe[0].out };
+      lobe[lobe.length - 1] = { ...v(cx - Math.sqrt(r * r - h * h), h), in: lobe[lobe.length - 1].in };
+      nodes.push(...lobe.map(place));
+    } else {
+      const flare = Math.min(width * 1.1, (l - corner) * 0.6);
+      nodes.push(...[v(l - flare, -h), v(l - flare * 0.55, -h * 1.75), v(l, 0), v(l - flare * 0.55, h * 1.75), v(l - flare, h)].map((point) => place({ ...point })));
+    }
+  }
+  return { closed: true, nodes };
+}
+
 function star(count: number, inner: number, outer: number): Outline {
   const step = (Math.PI * 2) / count;
   const points: Vec[] = [];
@@ -321,6 +395,9 @@ function singleOutlines(id: string, p: MotifParams): Outline[] {
       return [scallopedCircle(p.count, p.radius, p.length)];
     case "star":
       return [star(p.count, p.radius, p.radius + p.length)];
+    case "cross-round":
+    case "cross-pointed":
+      return [cross(p.count, p.length, p.width, p.long ?? 0, id === "cross-round" ? "round" : "pointed")];
     case "ring":
     case "center":
       return [ellipse(0, 0, p.radius, p.radius)];
@@ -338,13 +415,14 @@ export function cleanMotifParams(builder: MotifBuilder, params: Partial<MotifPar
   const defaults = motifDefaults(builder);
   const number = (key: MotifParamKey) => {
     const value = Number(params[key]);
-    return Number.isFinite(value) ? value : defaults[key];
+    return Number.isFinite(value) ? value : defaults[key] ?? 0;
   };
   const size = (key: MotifParamKey, minimum = MIN_SIZE) => Math.min(SIZE_LIMIT, Math.max(minimum, number(key)));
-  const minCount = builder.id === "scallop-disc" || builder.id === "star" ? 3 : 1;
+  const isCross = builder.id.startsWith("cross-");
+  const minCount = builder.id === "scallop-disc" || builder.id === "star" || isCross ? 3 : 1;
   const line = Math.min(SIZE_LIMIT, Math.max(0, number("line")));
   return {
-    count: Math.min(COUNT_LIMIT, Math.max(minCount, Math.round(number("count")))),
+    count: Math.min(isCross ? 12 : COUNT_LIMIT, Math.max(minCount, Math.round(number("count")))),
     radius: builder.single ? size("radius", 1) : Math.min(SIZE_LIMIT, Math.max(0, number("radius"))),
     length: builder.id === "ring" || builder.id === "center" ? 0 : size("length"),
     width: size("width"),
@@ -352,12 +430,14 @@ export function cleanMotifParams(builder: MotifBuilder, params: Partial<MotifPar
     line: builder.strokeOnly ? Math.max(MIN_SIZE, line || defaults.line) : line < MIN_SIZE / 2 ? 0 : line,
     height: size("height"),
     turn: ((number("turn") % 360) + 360) % 360,
+    ...(isCross ? { long: Math.min(SIZE_LIMIT, Math.max(0, number("long"))) } : {}),
   };
 }
 
 /** How far the layer reaches from the middle, mm (before the line's width). */
 export function motifReach(builder: MotifBuilder, p: MotifParams) {
   if (builder.id === "ring" || builder.id === "center" || builder.id === "scallop-disc") return p.radius;
+  if (builder.id.startsWith("cross-")) return p.length + (p.long ?? 0);
   return p.radius + p.length;
 }
 

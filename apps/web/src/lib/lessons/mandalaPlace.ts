@@ -22,11 +22,12 @@ export function mandalaCentreOf(shape: WorkplaneShape, box: { minX: number; maxX
   return { x: (box.minX + box.maxX) / 2, z: (box.minZ + box.maxZ) / 2 };
 }
 
-/** Where the next layer goes: on top of the selected bodies, on their middle; else the plate's middle. */
-export function mandalaPlaceOn(selected: readonly WorkplaneShape[], box: { minX: number; maxX: number; maxY: number; minZ: number; maxZ: number } | null): MandalaPlace {
+/** Where the next ring goes: on top of the selected bodies (or level with them), on their middle; else the plate's middle. */
+export function mandalaPlaceOn(selected: readonly WorkplaneShape[], box: { minX: number; maxX: number; minY?: number; maxY: number; minZ: number; maxZ: number } | null, level = false): MandalaPlace {
   if (!selected.length || !box) return { x: 0, z: 0, elevation: 0 };
   const round = (value: number) => Math.round(value * 1000) / 1000;
   const centre = selected.length === 1 ? mandalaCentreOf(selected[0], box) : { x: (box.minX + box.maxX) / 2, z: (box.minZ + box.maxZ) / 2 };
-  return { x: round(centre.x), z: round(centre.z), elevation: round(box.maxY) };
+  // "Level with" puts the ring in the same layer as the selection, beside it; else it goes on top.
+  return { x: round(centre.x), z: round(centre.z), elevation: round(level ? box.minY ?? 0 : box.maxY) };
 }
 

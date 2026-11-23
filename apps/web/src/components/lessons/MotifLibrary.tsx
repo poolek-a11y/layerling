@@ -11,6 +11,7 @@ import {
   type MotifParamKey,
   type MotifParams,
 } from "@/lib/lessons/mandalaMotifs";
+import type { OffsetSettings } from "@/lib/lessons/mandalaOffset";
 import { parseMeasurementInput } from "@/lib/measurementUnits";
 import type { SketchProfile } from "@/types/layerling";
 
@@ -27,7 +28,11 @@ export type MotifEntry = { id: string; name: string; thumbnail: string };
 export type LessonLibraryTools = {
   /** How many bodies are selected: the new ring goes on top of them. */
   selectionCount: number;
-  addLayer: (builderId: string, params: MotifParams) => Promise<boolean>;
+  /** The line width of the selected layer, mm, or null: the offset layer starts from it. */
+  selectedLine: number | null;
+  /** `level`: in the same layer as the selection, beside it, instead of on top. */
+  addLayer: (builderId: string, params: MotifParams, level?: boolean) => Promise<boolean>;
+  addOffsetLayer: (settings: OffsetSettings) => Promise<boolean>;
   myMotifs: MotifEntry[];
   insertMotif: (id: string) => Promise<boolean>;
   saveMotif: (name: string) => Promise<boolean>;
@@ -38,19 +43,22 @@ const IN = 25.4;
 function fieldLabel(builder: MotifBuilder, key: MotifParamKey) {
   switch (key) {
     case "count":
-      return builder.id === "scallop-disc" ? "Bumps on the edge" : builder.id === "star" ? "Points" : "Copies around";
+      return builder.id === "scallop-disc" ? "Bumps on the edge" : builder.id === "star" ? "Points" : builder.id.startsWith("cross-") ? "Arms" : "Copies around";
     case "radius":
       return builder.single ? (builder.id === "star" ? "Inner radius" : "Radius") : "Starts from the middle";
     case "length":
+      if (builder.id.startsWith("cross-")) return "Arm reach from the middle";
       return builder.id === "scallop-disc" ? "Wave depth" : builder.id === "star" ? "Point length" : builder.id === "dots" ? "Dot size" : "Length";
     case "width":
-      return "Width";
+      return builder.id.startsWith("cross-") ? "Arm width" : "Width";
     case "line":
       return builder.strokeOnly ? "Line width" : "Line width (0 = filled)";
     case "height":
       return "Thickness";
     case "turn":
       return "Turn (degrees)";
+    case "long":
+      return "Bottom arm longer by";
   }
 }
 
@@ -93,6 +101,19 @@ function MotifPreview({ builderId, params }: { builderId: string; params: MotifP
   );
 }
 
+const OFFSET_ID = "offset";
+
+/** Three nested outlines, each a step inside the one below. */
+function OffsetPreview() {
+  return (
+    <svg className="motif-preview" viewBox="-50 -50 100 100" role="img" aria-label="Preview of an offset layer">
+      {[44, 34, 24].map((r, index) => (
+        <path key={r} d={`M0 ${-r}C${r * 0.55} ${-r} ${r} ${-r * 0.55} ${r} 0S${r * 0.55} ${r} 0 ${r}S${-r} ${r * 0.55} ${-r} 0S${-r * 0.55} ${-r} 0 ${-r}Z`} fill="none" stroke="currentColor" strokeWidth={9 - index * 2} opacity={1 - index * 0.25} />
+      ))}
+    </svg>
+  );
+}
+
 type Props = { tools: LessonLibraryTools | undefined; metric: boolean };
 
 export function MotifLibrary({ tools, metric }: Props) {
@@ -102,12 +123,19 @@ export function MotifLibrary({ tools, metric }: Props) {
   const [busy, setBusy] = useState(false);
   const [motifName, setMotifName] = useState("");
 
+  const [level, setLevel] = useState(false);
+  const [offset, setOffset] = useState<{ offset?: number; line?: number; dropOuter: boolean }>({ dropOuter: false });
+  const offsetChosen = builderId === OFFSET_ID;
   const builder = MOTIF_BUILDERS.find((entry) => entry.id === builderId) ?? MOTIF_BUILDERS[0];
+  // The offset layer starts from the selected layer's line: set in by half of it, the same width.
+  const belowLine = tools?.selectedLine ?? 0.08 * IN;
+  const offsetLine = offset.line ?? belowLine;
+  const offsetSettings: OffsetSettings = { line: offsetLine, offset: offset.offset ?? offsetLine / 2, dropOuter: offset.dropOuter };
   const params = settings[builder.id] ?? motifDefaults(builder);
   const unit = metric ? "mm" : "in";
   // Sizes are kept in millimetres and shown in the student's units.
   const shown = (key: MotifParamKey) => {
-    const value = params[key];
+    const value = params[key] ?? 0;
     if (key === "count" || key === "turn") return String(Math.round(value * 100) / 100);
     return metric ? String(Math.round(value * 10) / 10) : String(Math.round((value / IN) * 1000) / 1000);
   };
@@ -117,6 +145,15 @@ export function MotifLibrary({ tools, metric }: Props) {
     if (!Number.isFinite(typed)) return;
     const value = key === "count" || key === "turn" || metric ? typed : typed * IN;
     setSettings((all) => ({ ...all, [builder.id]: cleanMotifParams(builder, { ...params, [key]: value }) }));
+  };
+
+  const shownLength = (mm: number) => (metric ? String(Math.round(mm * 10) / 10) : String(Math.round((mm / IN) * 1000) / 1000));
+  const setOffsetField = (key: "offset" | "line", text: string) => {
+    const typed = parseMeasurementInput(text);
+    if (!Number.isFinite(typed) || typed < 0) return;
+    const mm = Math.min(50, metric ? typed : typed * IN);
+    if (key === "line" && mm < 0.2) return;
+    setOffset((current) => ({ ...current, [key]: mm }));
   };
 
   const run = async (work: () => Promise<boolean>) => {
@@ -130,7 +167,7 @@ export function MotifLibrary({ tools, metric }: Props) {
   };
 
   const selection = tools?.selectionCount ?? 0;
-  const across = buildMotifLayer(builder.id, params).diameter;
+  const across = offsetChosen ? 0 : buildMotifLayer(builder.id, params).diameter;
 
   return (
     <div className="motif-library">
@@ -142,12 +179,22 @@ export function MotifLibrary({ tools, metric }: Props) {
       {tab === "builders" ? (
         <>
           <div className="motif-grid">
+            <button
+              type="button"
+              className={offsetChosen ? "motif-tile active" : "motif-tile"}
+              aria-pressed={offsetChosen}
+              onClick={() => setBuilderId(OFFSET_ID)}
+              title="The selected layer's lines, set in a little and drawn again on top"
+            >
+              <span style={{ color: "#e7399e" }}><OffsetPreview /></span>
+              <small>Offset layer</small>
+            </button>
             {MOTIF_BUILDERS.map((entry) => (
               <button
                 key={entry.id}
                 type="button"
-                className={entry.id === builder.id ? "motif-tile active" : "motif-tile"}
-                aria-pressed={entry.id === builder.id}
+                className={entry.id === builderId ? "motif-tile active" : "motif-tile"}
+                aria-pressed={entry.id === builderId}
                 onClick={() => setBuilderId(entry.id)}
                 title={entry.blurb}
               >
@@ -159,41 +206,88 @@ export function MotifLibrary({ tools, metric }: Props) {
             ))}
           </div>
 
-          <h2>{builder.name}</h2>
-          <p className="lesson-muted">{builder.blurb}</p>
-          <div className="motif-fields">
-            {builder.fields.map((key) => (
-              <label key={`${builder.id}-${key}-${metric}-${shown(key)}`}>
-                <span>{fieldLabel(builder, key)}{key !== "count" && key !== "turn" ? ` (${unit})` : ""}</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  defaultValue={shown(key)}
-                  onBlur={(event) => setField(key, event.currentTarget.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") setField(key, event.currentTarget.value);
-                  }}
-                />
+          {offsetChosen ? (
+            <>
+              <h2>Offset layer</h2>
+              <p className="lesson-muted">Select a layer (Shift-click to take every ring of it). Its lines are set in a little and drawn again on top, so the new line rests on the one below and the lower line still shows beside it.</p>
+              <div className="motif-fields">
+                {(["offset", "line"] as const).map((key) => (
+                  <label key={`offset-${key}-${metric}-${shownLength(offsetSettings[key])}`}>
+                    <span>{key === "offset" ? "Set in by" : "Line width"} ({unit})</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      defaultValue={shownLength(offsetSettings[key])}
+                      onBlur={(event) => setOffsetField(key, event.currentTarget.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") setOffsetField(key, event.currentTarget.value);
+                      }}
+                    />
+                  </label>
+                ))}
+              </div>
+              <label className="motif-check">
+                <input type="checkbox" checked={offsetSettings.dropOuter} onChange={(event) => {
+                  const dropOuter = event.currentTarget.checked;
+                  setOffset((current) => ({ ...current, dropOuter }));
+                }} />
+                <span>Leave out the outermost outline, so this layer is a step smaller</span>
               </label>
-            ))}
-          </div>
-          {builder.fields.includes("turn") && !builder.single ? (
-            <button type="button" className="lesson-link-button" onClick={() => setField("turn", String(180 / params.count))}>
-              Turn half a step, between the motifs below
-            </button>
-          ) : null}
-          <p className="lesson-muted">
-            About {metric ? `${Math.round(across)} mm` : `${(across / IN).toFixed(2)} in`} across. {selection ? `Goes on top of the ${selection === 1 ? "selected body" : `${selection} selected bodies`}, centred.` : "Nothing is selected: goes on the middle of the plate."}
-          </p>
-          <div className="motif-actions">
-            <button type="button" className="lesson-next" disabled={busy || !tools} onClick={() => void run(() => tools!.addLayer(builder.id, params))}>
-              <Plus size={15} aria-hidden="true" /> {busy ? "Building..." : "Add to my design"}
-            </button>
-            <button type="button" className="lesson-link-button" onClick={() => setSettings((all) => {
-              const { [builder.id]: _dropped, ...rest } = all;
-              return rest;
-            })}>Reset</button>
-          </div>
+              {offsetSettings.offset >= offsetSettings.line ? (
+                <p className="lesson-result">Set in by less than the line width, or the new line won't rest on the one below and will print in the air.</p>
+              ) : null}
+              <p className="lesson-muted">{selection ? `Offsets the ${selection === 1 ? "selected body" : `${selection} selected bodies`} and puts the new layer on top.` : "Select the layer to offset first."}</p>
+              <div className="motif-actions">
+                <button type="button" className="lesson-next" disabled={busy || !tools || !selection} onClick={() => void run(() => tools!.addOffsetLayer(offsetSettings))}>
+                  <Plus size={15} aria-hidden="true" /> {busy ? "Building..." : "Add the offset layer"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2>{builder.name}</h2>
+              <p className="lesson-muted">{builder.blurb}</p>
+              <div className="motif-fields">
+                {builder.fields.map((key) => (
+                  <label key={`${builder.id}-${key}-${metric}-${shown(key)}`}>
+                    <span>{fieldLabel(builder, key)}{key !== "count" && key !== "turn" ? ` (${unit})` : ""}</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      defaultValue={shown(key)}
+                      onBlur={(event) => setField(key, event.currentTarget.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") setField(key, event.currentTarget.value);
+                      }}
+                    />
+                  </label>
+                ))}
+              </div>
+              {builder.fields.includes("turn") && !builder.single ? (
+                <button type="button" className="lesson-link-button" onClick={() => setField("turn", String(180 / params.count))}>
+                  Turn half a step, between the motifs below
+                </button>
+              ) : null}
+              <div className="lesson-units motif-tabs" role="group" aria-label="Where it goes">
+                <button type="button" className={!level ? "active" : ""} aria-pressed={!level} onClick={() => setLevel(false)}>On top</button>
+                <button type="button" className={level ? "active" : ""} aria-pressed={level} onClick={() => setLevel(true)}>Same layer</button>
+              </div>
+              <p className="lesson-muted">
+                About {metric ? `${Math.round(across)} mm` : `${(across / IN).toFixed(2)} in`} across. {selection
+                  ? `Goes ${level ? "level with" : "on top of"} the ${selection === 1 ? "selected body" : `${selection} selected bodies`}, centred.`
+                  : "Nothing is selected: goes on the middle of the plate."}
+              </p>
+              <div className="motif-actions">
+                <button type="button" className="lesson-next" disabled={busy || !tools} onClick={() => void run(() => tools!.addLayer(builder.id, params, level))}>
+                  <Plus size={15} aria-hidden="true" /> {busy ? "Building..." : "Add to my design"}
+                </button>
+                <button type="button" className="lesson-link-button" onClick={() => setSettings((all) => {
+                  const { [builder.id]: _dropped, ...rest } = all;
+                  return rest;
+                })}>Reset</button>
+              </div>
+            </>
+          )}
         </>
       ) : (
         <>

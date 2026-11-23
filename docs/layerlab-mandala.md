@@ -1,46 +1,54 @@
-# Layered Mandala lesson and shape library
+# Mandala lessons and shape library
 
-A guided lesson in the editor (like Kokeshi Maker) for building a layered mandala, with a library of
-**mandala shape builders** and each student's own **motif library**.
+Two guided lessons in the editor (like Kokeshi Maker), sharing one library of **mandala shape
+builders** and each student's own **motif library**:
+
+- **Traditional Mandala**: a round mandala in five layers.
+- **Mandala Cross**: a cross decorated mandala-style, in five layers.
+
+Both are built from lines (strokes), not solid shapes. Each layer above the bottom one is an
+**offset layer**: the same lines set in a little, so each new line rests half on the line below
+and the lower layer still shows beside it. A closed back (a solid bottom layer) is an option, not
+the default.
 
 ## For the teacher
 
-1. On the LayerLab page, open your class, add a tutorial, and choose **Layered Mandala** as its
-   guided lesson. Students then see **Start the guided lesson** on that tutorial.
-2. The lesson opens on the left of the editor. Its **Shape builders and my motifs** button opens the
-   library.
+On the LayerLab page, open your class, add a tutorial, and choose **Traditional Mandala** or
+**Mandala Cross** as its guided lesson. Students then see **Start the guided lesson** on it. The
+lesson's **Shape builders and my motifs** button opens the library.
+
+## The five layers
+
+| Layer | Traditional Mandala | Mandala Cross |
+| --- | --- | --- |
+| 1 | Scalloped outline + ring of petals + centre circle, all level and touching | Cross outline (round or pointed ends, optional longer bottom arm) + a petal along each arm + circle at the crossing |
+| 2 | Offset layer of all of layer 1 | same |
+| 3 | Offset layer, outermost outline left out (a step smaller) | same |
+| 4 | One more offset layer | same |
+| 5 | Centre: star or centre circle on top (solid allowed here) | same |
+
+Then: draw your own motif (sketch + stroke + Pattern → Circle), save to My motifs, check and print.
 
 ## The shape builders
 
-Each builder makes one whole ring as a single sketch body: the motif repeated round the middle.
-The ring goes **on top of what is selected, centred on it** (or on the middle of the plate when
-nothing is selected), so students stack a mandala by selecting the layer below and adding the next.
+Each builder makes one whole shape or ring as a single sketch body drawn with a stroke
+(Line width 0 builds it solid). **On top** puts it on top of the selection, centred; **Same layer**
+puts it level with the selection.
 
-| Builder | What it makes |
-| --- | --- |
-| Scalloped base | Round base with a wavy edge |
-| Lotus petals, Teardrops, Leaves | Petal rings |
-| Criss-cross circles, Criss-cross petals | Overlapping outlines that cross into a lattice (always stroked) |
-| Star, Diamonds, Spikes, Dots, Rays | Detail rings |
-| Ring | A circle drawn as a line, for a frame |
-| Centre button | Round button for the middle |
+Scalloped base, Cross (round ends), Cross (pointed ends), Lotus petals, Teardrops, Leaves,
+Criss-cross circles, Criss-cross petals, Star, Diamonds, Spikes, Dots, Rays, Ring, Centre circle.
 
-Settings: copies around, distance from the middle, length, width, **line width** (the sketch tool's
-stroke; 0 fills the motif), thickness and turn ("Turn half a step" puts motifs between the ones
-below). A ring is an ordinary sketch: **Edit sketch** changes its points or its stroke later.
+**Offset layer** builds the next layer from the selected one: its lines set in by *Set in by*
+(keep it under the line width, about half, or the line prints in the air) and drawn with *Line
+width*; *Leave out the outermost outline* makes the layer a step smaller.
+
+A ring stays an ordinary sketch: **Edit sketch** changes its points or its stroke later.
 
 ## My motifs (the student's library)
 
 **My motifs → Save the selection** keeps the selected bodies in the *Mandala motifs* folder of
 My shapes. For a student signed in to LayerLab that folder is in their own server folder, so the
-library follows them to every design and computer and grows as they get more experienced. A click
-on a saved motif puts it into the open design.
-
-## Lesson sections
-
-A five-layer build: Welcome, Layer 1 Base, Layer 2 Petals (lotus / teardrop / leaf, then outline
-vs. filled with the stroke), Layer 3 Criss-cross, Layer 4 Details, Layer 5 Centre, Your own motif (optional: draw with the sketch tool and a
-stroke, repeat with Pattern → Circle), Your motif library, Check and print, Freestyle.
+library follows them to every design and grows as they get more experienced.
 
 Code: `apps/web/src/lib/lessons/mandala*.ts`, `apps/web/src/components/lessons/MotifLibrary.tsx`,
 `apps/web/src/components/lessons/useLessonLibrary.ts`.

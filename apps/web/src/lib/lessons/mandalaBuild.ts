@@ -1,7 +1,8 @@
 import { cadShapeFromSketchProfile } from "@/lib/editorSketchCad";
 import { getManifoldRuntime } from "@/lib/editorMeshCore";
 import { createLocalId } from "@/lib/localIds";
-import { buildMotifLayer, type MotifParams } from "@/lib/lessons/mandalaMotifs";
+import { buildMotifLayer, type MotifLayer, type MotifParams } from "@/lib/lessons/mandalaMotifs";
+import { offsetLayerProfile, type OffsetSettings } from "@/lib/lessons/mandalaOffset";
 import { strokedSketchProfile } from "@/lib/sketchStroke";
 import { sketchBodyAnchor } from "@/lib/sketchPlacement";
 import { canonicalizeShape } from "@/lib/workplaneShapes";
@@ -20,7 +21,30 @@ import type { WorkplaneShape } from "@/types/layerling";
  * crossing curves), the stroke's outline is worked out here and built as a filled area instead.
  */
 export async function buildMandalaLayer(builderId: string, params: Partial<MotifParams>, place: MandalaPlace): Promise<WorkplaneShape> {
-  const layer = buildMotifLayer(builderId, params);
+  return buildLayerShape(buildMotifLayer(builderId, params), place);
+}
+
+/** Offset layer colours, one after another up the stack, for a print that changes filament at each layer. */
+const OFFSET_COLOURS = ["#e7399e", "#ff9e2c", "#2fbf71", "#16c0d4", "#ffc93c", "#8a5bf0"];
+
+/**
+ * The offset layer (mandalaOffset.ts) of the selected bodies, on top of them: their lines set in
+ * and stroked again, so it rests on them and they still show beside it.
+ */
+export async function buildOffsetLayer(selected: readonly WorkplaneShape[], settings: OffsetSettings, elevation: number, layerNumber: number): Promise<WorkplaneShape> {
+  const profile = offsetLayerProfile(await getManifoldRuntime(), selected, settings);
+  if (!profile) throw new Error("Nothing is left to offset. Select a layer built from a sketch (a shape builder ring or your own sketch), or make the offset smaller.");
+  const height = selected.reduce((thinnest, shape) => Math.min(thinnest, shape.height), Number.POSITIVE_INFINITY);
+  return buildLayerShape({
+    name: `Offset layer ${layerNumber}`,
+    color: OFFSET_COLOURS[(layerNumber - 2 + OFFSET_COLOURS.length) % OFFSET_COLOURS.length],
+    profile,
+    height: Number.isFinite(height) ? Math.min(height, 5) : 2.5,
+    diameter: 0,
+  }, { x: 0, z: 0, elevation });
+}
+
+async function buildLayerShape(layer: MotifLayer, place: MandalaPlace): Promise<WorkplaneShape> {
   let built: WorkplaneShape;
   try {
     built = await cadShapeFromSketchProfile(layer.profile, layer.height);
