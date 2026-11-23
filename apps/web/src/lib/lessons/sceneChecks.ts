@@ -213,9 +213,10 @@ export function thinParts(scene: LessonScene, minimum = inches(0.05)) {
   return solids(scene).filter((part) => Math.min(part.w, part.h, part.d) < minimum - 0.05);
 }
 
-export function connectedAndPrintable(scene: LessonScene): CheckResult {
+/** `what` names the design in the message: "the doll" for Kokeshi Maker. */
+export function connectedAndPrintable(scene: LessonScene, what = "the doll"): CheckResult {
   const floating = floatingObjects(scene);
-  if (floating.length) return fail(`${floating.length === 1 ? "One part is" : `${floating.length} parts are`} not touching the doll. Move ${floating.length === 1 ? "it" : "them"} until ${floating.length === 1 ? "it touches" : "they touch"}.`);
+  if (floating.length) return fail(`${floating.length === 1 ? "One part is" : `${floating.length} parts are`} not touching ${what}. Move ${floating.length === 1 ? "it" : "them"} until ${floating.length === 1 ? "it touches" : "they touch"}.`);
   const thin = thinParts(scene);
   if (thin.length) return fail(`${thin.length === 1 ? "One part is" : `${thin.length} parts are`} thinner than 0.05 in. Make ${thin.length === 1 ? "it" : "them"} a little thicker so ${thin.length === 1 ? "it prints" : "they print"}.`);
   return pass();
