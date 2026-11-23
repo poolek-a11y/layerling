@@ -11,6 +11,7 @@ import {
   type MotifParamKey,
   type MotifParams,
 } from "@/lib/lessons/mandalaMotifs";
+import { parseMeasurementInput } from "@/lib/measurementUnits";
 import type { SketchProfile } from "@/types/layerling";
 
 /**
@@ -111,7 +112,8 @@ export function MotifLibrary({ tools, metric }: Props) {
     return metric ? String(Math.round(value * 10) / 10) : String(Math.round((value / IN) * 1000) / 1000);
   };
   const setField = (key: MotifParamKey, text: string) => {
-    const typed = Number(text);
+    // A text field, as every measure in the editor: comma or point, fractions (1/16) and sums.
+    const typed = parseMeasurementInput(text);
     if (!Number.isFinite(typed)) return;
     const value = key === "count" || key === "turn" || metric ? typed : typed * IN;
     setSettings((all) => ({ ...all, [builder.id]: cleanMotifParams(builder, { ...params, [key]: value }) }));
@@ -164,10 +166,8 @@ export function MotifLibrary({ tools, metric }: Props) {
               <label key={`${builder.id}-${key}-${metric}-${shown(key)}`}>
                 <span>{fieldLabel(builder, key)}{key !== "count" && key !== "turn" ? ` (${unit})` : ""}</span>
                 <input
-                  type="number"
+                  type="text"
                   inputMode="decimal"
-                  step={key === "count" ? 1 : key === "turn" ? 1 : metric ? 0.5 : 0.01}
-                  min={key === "line" && !builder.strokeOnly ? 0 : undefined}
                   defaultValue={shown(key)}
                   onBlur={(event) => setField(key, event.currentTarget.value)}
                   onKeyDown={(event) => {

@@ -94,7 +94,7 @@ const welcome: LessonStep[] = [
   {
     id: "mandala-plan",
     title: "How you'll build it",
-    body: "Your mandala is a stack of thin layers, like a layered paper cut-out. The base is the biggest. Each layer above it is a little smaller, so the layers below show around its edge.\n\nYou'll build: a scalloped base, a ring of petals, a criss-cross lattice, a ring of details, and a centre button. Then you'll draw a motif of your own and save it to your library.",
+    body: "Your mandala is a stack of thin layers, like a layered paper cut-out. The base is the biggest. Each layer above it is a little smaller, so the layers below show around its edge.\n\nYou'll build five layers, from the bottom up:\n\nLayer 1: a scalloped base.\nLayer 2: a ring of petals.\nLayer 3: a criss-cross lattice.\nLayer 4: a ring of details.\nLayer 5: a centre button.\n\nThen you'll draw a motif of your own and save it to your library.",
   },
   {
     id: "mandala-builders",
@@ -117,7 +117,7 @@ const welcome: LessonStep[] = [
 const baseSteps: LessonStep[] = [
   {
     id: "mandala-base",
-    title: "Add the scalloped base",
+    title: "Layer 1: add the scalloped base",
     skill: "Shape builders",
     body: "Click an empty spot on the workplane so nothing is selected. Open Shape builders, choose Scalloped base and press Add to my design.\n\nThe base is about 4 1/4 in across and 1/8 in thick. Try 12 to 20 bumps on its edge.",
     check: needBase((base) => {
@@ -135,7 +135,7 @@ const baseSteps: LessonStep[] = [
 
 const petalStep = (choice: string, name: string, tip: string): LessonStep => ({
   id: `mandala-petals-${choice}`,
-  title: `Add a ring of ${name.toLowerCase()}`,
+  title: `Layer 2: add a ring of ${name.toLowerCase()}`,
   skill: "Stacking layers",
   body: `Select the base. Open Shape builders, choose ${name} and press Add to my design. The new ring goes on top of what is selected, right in the middle.\n\n${tip}`,
   check: layerCount(2),
@@ -164,7 +164,7 @@ const strokeSteps: LessonStep[] = [
 
 const crissStep = (choice: string, name: string, tip: string): LessonStep => ({
   id: `mandala-criss-${choice}`,
-  title: `Add ${name.toLowerCase()}`,
+  title: `Layer 3: add ${name.toLowerCase()}`,
   skill: "Criss-cross lattice",
   body: `Select the petal ring. Open Shape builders, choose ${name} and press Add to my design.\n\n${tip}\n\nThese motifs overlap their neighbours on purpose. With a stroke, every line crosses the next one and the crossings become a lattice. Filled in, they would melt into one blob, so these builders always use a line.`,
   check: layerCount(3, (layer) => (hasStroke(layer) ? null : fail("Build the lattice with a stroke: Edit sketch, then switch on Build as a stroke in Stroke."))),
@@ -182,9 +182,9 @@ const crissChoices: LessonChoice[] = [
 const detailSteps: LessonStep[] = [
   {
     id: "mandala-details",
-    title: "Add a ring of details",
+    title: "Layer 4: add a ring of details",
     skill: "Spacing a ring",
-    body: "Details make a mandala look finished. Select a layer and add Dots, Spikes, Diamonds or Rays from Shape builders. Change Starts from the middle until the ring sits where you want it: around the edge of the base, between two rings, or close to the centre.\n\nA ring of details can sit on the base around the outside of the other layers. Select the base first for that.",
+    body: "Details make a mandala look finished. Select the criss-cross layer, then add Dots, Spikes, Diamonds or Rays from Shape builders. Change Starts from the middle until the ring sits on the lattice where you want it.\n\nTip: a ring of details can also sit on the base, around the outside of the other layers. Select the base first for that.",
     check: needBase((_base, scene) => {
       const layers = stackedLayers(scene);
       if (offCentre(scene).length) return fail("One of your layers is off the middle. Select the layer below, then add the ring again.");
@@ -199,7 +199,7 @@ const detailSteps: LessonStep[] = [
 const centreSteps: LessonStep[] = [
   {
     id: "mandala-centre",
-    title: "Finish with a centre button",
+    title: "Layer 5: finish with a centre button",
     skill: "Stacking layers",
     body: "Select the top layer. Add a Centre button, or a Star, from Shape builders. It goes on top, exactly in the middle.\n\nKeep it between 1/2 and 1 1/4 in across.",
     check: needBase((_base, scene) => {
@@ -267,7 +267,7 @@ const printChecks = [{ label: "Every layer touches the one below and nothing flo
 const mandala: Lesson = {
   id: "mandala",
   title: "Layered Mandala",
-  subtitle: "Rings of motifs, stacked in layers",
+  subtitle: "Five layers, from the base to the centre",
   units: "Imperial",
   library: "mandala",
   freestyleText: "No steps here. Build a new mandala from your library, try a different number of copies in every ring, or design a whole set of coasters. Here is every skill you have used so far:",
@@ -275,7 +275,7 @@ const mandala: Lesson = {
     { id: "welcome", title: "Welcome", goal: "Learn what a mandala is and how you'll build it.", skills: [], steps: welcome, guidedOnly: true },
     {
       id: "base",
-      title: "Base",
+      title: "Base layer",
       goal: "A flat round base about 4 in across and 1/8 in thick, lying on the plate.",
       skills: ["Shape builders"],
       steps: baseSteps,
@@ -283,7 +283,7 @@ const mandala: Lesson = {
     },
     {
       id: "petals",
-      title: "Petal ring",
+      title: "Petal layer",
       goal: "A ring of petals centred on the base and sitting on it.",
       skills: ["Shape builders", "Stacking layers", "Sketch stroke"],
       choices: petalChoices,
@@ -292,7 +292,7 @@ const mandala: Lesson = {
     },
     {
       id: "criss-cross",
-      title: "Criss-cross lattice",
+      title: "Criss-cross layer",
       goal: "A ring of overlapping outlines that cross into a lattice, on top of the petals.",
       skills: ["Criss-cross lattice", "Sketch stroke"],
       choices: crissChoices,
@@ -300,7 +300,7 @@ const mandala: Lesson = {
     },
     {
       id: "details",
-      title: "Details",
+      title: "Detail layer",
       goal: "A ring of dots, spikes, diamonds or rays.",
       skills: ["Spacing a ring"],
       steps: detailSteps,
@@ -308,11 +308,11 @@ const mandala: Lesson = {
     },
     {
       id: "centre",
-      title: "Centre",
+      title: "Centre layer",
       goal: "A centre button on top, in the middle.",
       skills: ["Stacking layers"],
       steps: centreSteps,
-      ownWayChecks: [{ label: "A centre piece on top", check: centreSteps[0].check! }],
+      ownWayChecks: [{ label: "Five layers, with a centre piece on top", check: centreSteps[0].check! }],
     },
     {
       id: "own-motif",

@@ -38,8 +38,8 @@ on a saved motif puts it into the open design.
 
 ## Lesson sections
 
-Welcome, Base, Petal ring (lotus / teardrop / leaf, then outline vs. filled with the stroke),
-Criss-cross lattice, Details, Centre, Your own motif (optional: draw with the sketch tool and a
+A five-layer build: Welcome, Layer 1 Base, Layer 2 Petals (lotus / teardrop / leaf, then outline
+vs. filled with the stroke), Layer 3 Criss-cross, Layer 4 Details, Layer 5 Centre, Your own motif (optional: draw with the sketch tool and a
 stroke, repeat with Pattern → Circle), Your motif library, Check and print, Freestyle.
 
 Code: `apps/web/src/lib/lessons/mandala*.ts`, `apps/web/src/components/lessons/MotifLibrary.tsx`,
