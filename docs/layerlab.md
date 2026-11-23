@@ -20,6 +20,10 @@ Two settings switch it on:
 | `LAYERLING_SHARED_PROJECTS_DIR` | The folder on the server for every design. LayerLab keeps its own data in `.layerlab/` inside it, and each student's designs in `.users/layerlab-<class>-<student>/`. Back this folder up. |
 | `LAYERLAB_TEACHER_PASSWORD` | The teacher's password. Without it, LayerLab is off and the LayerLab button is hidden. |
 | `LAYERLAB_SECRET` (recommended) | A long random string that signs the sign-in cookies. If it is not set, the password is used, so changing the password signs everyone out. |
+| `LAYERLAB_GOOGLE_CLIENT_ID`, `LAYERLAB_GOOGLE_CLIENT_SECRET` (optional) | Turn on **Sign in with Google**. See [layerlab-google.md](layerlab-google.md). |
+| `LAYERLAB_GOOGLE_DOMAINS` (optional) | Only Google accounts of these school domains may sign in as students, comma-separated. |
+| `LAYERLAB_TEACHER_EMAILS` (optional) | Google accounts that sign in as the teacher, comma-separated. |
+| `LAYERLAB_PUBLIC_URL` (optional) | The site's public address, if a proxy hides it from the server. Used for the Google redirect. |
 
 ### With Docker (recommended)
 
@@ -61,6 +65,13 @@ The site itself is public: anyone with the address can open the editor. With Lay
 
 **Student.** Go to `/layerlab`, type the class code, your name and a PIN. *My work* shows your designs and your teacher's comments. *New design* or *Start from the starter* opens the editor. Everything you save goes to your class folder.
 
+## Google sign-in and Google Classroom
+
+- **Sign in with Google.** With a Google OAuth client set up, students and the teacher can sign in with school Google accounts. A student types the class code once; after that Google signs them straight in. A student who joined with a PIN links their Google account by typing the PIN once. Only the first name and a hash of the Google account id are stored. The PIN and password sign-in keep working.
+- **Share to Google Classroom** needs no setup. Students press **Turn in on Google Classroom** on a design to attach its LayerLab link to an assignment. The teacher can post a class's join link (with the code filled in) and **Assign in Classroom** any tutorial. The link a student turns in opens that design, with its versions and comments, for the teacher.
+
+Step-by-step setup for a teacher: [layerlab-google.md](layerlab-google.md).
+
 ## Guided lessons
 
 A tutorial can also start a **guided lesson** inside the editor. The first one is **Kokeshi Maker**: students design a 6 to 8 inch kokeshi doll from basic shapes, section by section (body, head, hair or helmet, kimono, optional armor, face, accessories, print prep, then freestyle).
@@ -75,7 +86,7 @@ The lesson content lives in `apps/web/src/lib/lessons/kokeshi.ts`.
 
 ## Limits of this first version
 
-- There is one teacher password per server, not separate teacher accounts.
+- There is one teacher password per server. With Google sign-in, several teachers can sign in by email, but they all see every class.
 - Students can see their teacher's comments on the LayerLab page, but not yet inside the editor.
 - The LayerLab page is in English only. The editor keeps all its languages.
 - A student's session is a signed cookie. Removing a student from a class stops them from appearing, but a browser that is already signed in can still save into that student's folder until it signs out.
@@ -85,7 +96,7 @@ The lesson content lives in `apps/web/src/lib/lessons/kokeshi.ts`.
 
 LayerLab is written to sit on top of upstream layerling with very few changes to its files:
 
-- New files: `apps/web/src/lib/layerlab/`, `apps/web/src/app/layerlab/`, `apps/web/src/app/api/layerlab/`, `apps/web/src/components/layerlab/`, `docker/compose.layerlab.yml`, this file, and `tests/unit/layerlab.test.ts`.
+- New files: `apps/web/src/lib/layerlab/`, `apps/web/src/app/layerlab/`, `apps/web/src/app/api/layerlab/`, `apps/web/src/components/layerlab/`, `docker/compose.layerlab.yml`, this file, `layerlab-google.md`, and `tests/unit/layerlab.test.ts`.
 - Small hooks in existing files:
   - `app/api/shared-projects/route.ts`: the student's folder, and recording iterations after a save, rename or move.
   - `app/api/server-defaults/route.ts`: new designs start on the server for students.

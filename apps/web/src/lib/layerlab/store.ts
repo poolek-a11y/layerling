@@ -116,7 +116,8 @@ function updateJson<T>(file: string, fallback: T, change: (value: T) => T | Prom
 
 /* ---------- classes ---------- */
 
-type StoredStudent = LayerLabStudent & { pinHash: string };
+/** `pinHash` is empty for a student who only signs in with Google; `googleId` is set once they have. */
+type StoredStudent = Omit<LayerLabStudent, "google"> & { pinHash: string; googleId?: string };
 type StoredClass = Omit<LayerLabClass, "students" | "starters"> & {
   students: StoredStudent[];
   starters: Array<Omit<LayerLabStarter, "size">>;
@@ -146,7 +147,7 @@ async function publicClass(stored: StoredClass): Promise<LayerLabClass> {
   })));
   return {
     ...stored,
-    students: stored.students.map(({ id, name, joinedAt }) => ({ id, name, joinedAt })),
+    students: stored.students.map(({ id, name, joinedAt, googleId }) => ({ id, name, joinedAt, ...(googleId ? { google: true } : {}) })),
     starters,
   };
 }
@@ -221,6 +222,52 @@ export async function addStudent(classId: string, name: string, pinHash: string)
     return { ...stored, students: [...stored.students, added] };
   });
   return added as unknown as StoredStudent;
+}
+
+/** A free name for a student joining with Google: "Sam", then "Sam K.", then "Sam K. 2". */
+function freeName(stored: StoredClass, givenName: string, familyInitial: string) {
+  const taken = (name: string) => stored.students.some((student) => sameName(student.name, name));
+  if (!taken(givenName)) return givenName;
+  const withInitial = familyInitial ? `${givenName} ${familyInitial}.` : givenName;
+  if (!taken(withInitial)) return withInitial;
+  for (let index = 2; ; index += 1) {
+    if (!taken(`${withInitial} ${index}`)) return `${withInitial} ${index}`;
+  }
+}
+
+export async function addGoogleStudent(classId: string, givenName: string, familyInitial: string, googleId: string) {
+  let added: StoredStudent | null = null;
+  await changeClass(classId, (stored) => {
+    const existing = stored.students.find((student) => student.googleId === googleId);
+    if (existing) {
+      added = existing;
+      return stored;
+    }
+    added = { id: newId(), name: freeName(stored, givenName, familyInitial), pinHash: "", googleId, joinedAt: Date.now() };
+    return { ...stored, students: [...stored.students, added] };
+  });
+  return added as unknown as StoredStudent;
+}
+
+/** A student who joined with a PIN signs in with Google from now on (the PIN keeps working). */
+export async function linkGoogle(classId: string, studentId: string, googleId: string) {
+  await changeClass(classId, (stored) => ({
+    ...stored,
+    students: stored.students.map((student) => (student.id === studentId ? { ...student, googleId } : student)),
+  }));
+}
+
+/** Every class this Google account is a student in. */
+export async function classesOfGoogleStudent(googleId: string) {
+  const folder = path.join(dataRoot(), "classes");
+  const files = (await fs.readdir(folder).catch(() => [] as string[])).filter((name) => name.endsWith(".json"));
+  const classes = await Promise.all(files.map((name) => readJson<StoredClass | null>(path.join(folder, name), null)));
+  return classes
+    .filter((stored): stored is StoredClass => Boolean(stored))
+    .flatMap((stored) => stored.students
+      .filter((student) => student.googleId === googleId)
+      .map((student) => ({ classId: stored.id, className: stored.name, studentId: student.id, createdAt: stored.createdAt })))
+    .sort((a, b) => b.createdAt - a.createdAt);
 }
 
 export async function setStudentPin(classId: string, studentId: string, pinHash: string) {

@@ -574,3 +574,44 @@
 }
 
 .layerlab-tutorial h3 { font-weight: 700; }
+
+/* Google sign-in and Google Classroom */
+.layerlab-google-button {
+  width: 100%;
+  min-height: 38px;
+  gap: 10px;
+}
+
+.layerlab-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 4px;
+  color: var(--muted-strong);
+  font-size: 12px;
+}
+
+.layerlab-divider::before,
+.layerlab-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+.layerlab-tag {
+  padding: 1px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.layerlab-class-head .layerlab-button { margin-top: 6px; }
+
+.layerlab-tutorial.highlighted {
+  margin: 0 -10px;
+  padding: 12px 10px;
+  border-radius: 10px;
+  outline: 2px solid var(--primary);
+}

@@ -1,8 +1,16 @@
 "use client";
 
 import { LESSON_OPTIONS, lessonLink } from "@/lib/lessons/catalog";
-import { ArrowLeft, BookOpen, GraduationCap, History, KeyRound, LogOut, MessageSquare, Plus, RefreshCw, Trash2, Upload, Users, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { ArrowLeft, BookOpen, GraduationCap, History, KeyRound, LogOut, MessageSquare, Plus, RefreshCw, Share2, Trash2, Upload, Users, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  classPageUrl,
+  classroomShareUrl,
+  designPageUrl,
+  openClassroomShare,
+  readLayerLabPageLink,
+  type LayerLabPageLink,
+} from "@/lib/layerlab/classroomShare";
 import { fetchLayerLabStatus, layerLabCall, layerLabFileUrl, layerLabUpload } from "@/lib/layerlab/client";
 import { LAYERLAB_NEW_DESIGN_URL, layerLabCopyUrl, layerLabOpenUrl } from "@/lib/layerlab/editorLink";
 import type {
@@ -10,6 +18,7 @@ import type {
   LayerLabClassSummary,
   LayerLabComment,
   LayerLabDesign,
+  LayerLabGoogleAnswer,
   LayerLabIteration,
   LayerLabStatus,
   LayerLabStudent,
@@ -58,12 +67,34 @@ function Notice({ text, onClose }: { text: string; onClose: () => void }) {
   );
 }
 
+const GOOGLE_MESSAGES: Record<string, string> = {
+  cancelled: "Google sign-in was cancelled.",
+  expired: "That Google sign-in took too long. Try again.",
+  domain: "Use your school Google account. That account is not from your school.",
+  unverified: "Google has not verified that account's email address yet.",
+  failed: "Google sign-in did not work. Try again, or ask your teacher.",
+};
+
+/** The page address without the one-time Google answer, so a reload does not show it again. */
+function withoutGoogleParam() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("google");
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
 export default function LayerLabPage() {
   const [status, setStatus] = useState<LayerLabStatus | null>(null);
   const [notice, setNotice] = useState("");
+  const [link, setLink] = useState<LayerLabPageLink>({});
 
   const refresh = useCallback(async () => setStatus(await fetchLayerLabStatus()), []);
   useEffect(() => {
+    const read = readLayerLabPageLink(window.location.search);
+    setLink(read);
+    if (read.google) {
+      if (GOOGLE_MESSAGES[read.google]) setNotice(GOOGLE_MESSAGES[read.google]);
+      window.history.replaceState(null, "", withoutGoogleParam());
+    }
     void refresh();
   }, [refresh]);
 
@@ -75,9 +106,10 @@ export default function LayerLabPage() {
   let body: ReactNode;
   if (!status) body = <p className="layerlab-muted">Loading…</p>;
   else if (!status.enabled) body = <SetupNeeded />;
-  else if (status.role === "teacher") body = <TeacherView storeEnabled={status.storeEnabled} onNotice={setNotice} />;
-  else if (status.role === "student" && status.student) body = <StudentView status={status} onNotice={setNotice} />;
-  else body = <SignIn onSignedIn={refresh} onNotice={setNotice} />;
+  else if (status.role === "teacher") body = <TeacherView storeEnabled={status.storeEnabled} link={link} onNotice={setNotice} />;
+  else if (status.role === "student" && status.student) body = <StudentView status={status} link={link} onNotice={setNotice} />;
+  else if (status.google?.pending) body = <GoogleContinue pending={status.google.pending} code={link.code ?? ""} onSignedIn={refresh} onSignOut={signOut} onNotice={setNotice} />;
+  else body = <SignIn google={Boolean(status.google?.enabled)} initialCode={link.code ?? ""} onSignedIn={refresh} onNotice={setNotice} />;
 
   return (
     <main className="layerlab-shell">
@@ -122,8 +154,128 @@ function SetupNeeded() {
 
 /* ---------- signing in ---------- */
 
-function SignIn({ onSignedIn, onNotice }: { onSignedIn: () => Promise<void>; onNotice: (text: string) => void }) {
-  const [code, setCode] = useState("");
+/** Sends the browser to Google; it comes back to this very page, so a class code or a design link still applies. */
+function googleSignInHref() {
+  return `/api/layerlab/google?${new URLSearchParams({ next: withoutGoogleParam() }).toString()}`;
+}
+
+function GoogleButton({ label = "Sign in with Google" }: { label?: string }) {
+  return (
+    <a className="layerlab-button layerlab-google-button" href={googleSignInHref()}>
+      <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
+        <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.2l7.9 6.2C12.5 13.7 17.8 9.5 24 9.5z" />
+        <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.5 5.8c4.4-4 6.8-10 6.8-17.1z" />
+        <path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.2C1 16.6 0 20.2 0 24s1 7.4 2.7 10.8l7.9-6.2z" />
+        <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.4 2.3-6.2 0-11.5-4.2-13.4-9.9l-7.9 6.2C6.6 42.6 14.6 48 24 48z" />
+      </svg>
+      {label}
+    </a>
+  );
+}
+
+/** A student who signed in with Google and still needs a class: pick one, type a code, or confirm a PIN once. */
+function GoogleContinue({ pending, code: initialCode, onSignedIn, onSignOut, onNotice }: {
+  pending: { name: string; classes: Array<{ id: string; name: string }> };
+  code: string;
+  onSignedIn: () => Promise<void>;
+  onSignOut: () => Promise<void>;
+  onNotice: (text: string) => void;
+}) {
+  const [code, setCode] = useState(initialCode);
+  const [pin, setPin] = useState("");
+  const [askPin, setAskPin] = useState<{ className: string; name: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const tried = useRef(false);
+
+  const go = useCallback(async (choice: { code?: string; classId?: string; pin?: string; asNew?: boolean }) => {
+    setBusy(true);
+    try {
+      const answer = await layerLabCall<LayerLabGoogleAnswer>("googleContinue", choice);
+      if ("ok" in answer) {
+        onNotice("");
+        await onSignedIn();
+        return;
+      }
+      if (answer.needs === "pin") setAskPin({ className: answer.className, name: answer.name });
+    } catch (error) {
+      onNotice((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }, [onNotice, onSignedIn]);
+
+  // A link from Google Classroom carries the class code: try it once straight away.
+  useEffect(() => {
+    if (initialCode && !tried.current) {
+      tried.current = true;
+      void go({ code: initialCode });
+    }
+  }, [initialCode, go]);
+
+  if (askPin) {
+    return (
+      <form className="layerlab-card layerlab-narrow" onSubmit={(event) => { event.preventDefault(); void go({ code, pin }); }}>
+        <h1><GraduationCap size={20} /> Is this you?</h1>
+        <p>
+          <strong>{askPin.name}</strong> already joined <strong>{askPin.className}</strong> with a PIN. If that is you, type your PIN once to link your
+          Google account. After that, Google signs you in.
+        </p>
+        <label>
+          PIN
+          <input value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, ""))} inputMode="numeric" type="password" maxLength={8} required autoFocus />
+        </label>
+        <div className="layerlab-row">
+          <button type="submit" className="layerlab-button primary" disabled={busy}>Link and sign in</button>
+          <button type="button" className="layerlab-button" disabled={busy} onClick={() => go({ code, asNew: true })}>
+            That is someone else, I am new
+          </button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <div className="layerlab-signin">
+      {pending.classes.length ? (
+        <section className="layerlab-card">
+          <h1><GraduationCap size={20} /> Hi {pending.name}, pick your class</h1>
+          <ul className="layerlab-list">
+            {pending.classes.map((entry) => (
+              <li key={entry.id}>
+                <strong>{entry.name}</strong>
+                <span className="layerlab-spacer" />
+                <button type="button" className="layerlab-button primary" disabled={busy} onClick={() => go({ classId: entry.id })}>Open</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      <form className="layerlab-card" onSubmit={(event) => { event.preventDefault(); void go({ code }); }}>
+        <h1><GraduationCap size={20} /> {pending.classes.length ? "Join another class" : `Hi ${pending.name}, join your class`}</h1>
+        <p className="layerlab-muted">Type the class code from your teacher. You only do this once: next time Google signs you straight in.</p>
+        <label>
+          Class code
+          <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} autoComplete="off" placeholder="ABC234" required />
+        </label>
+        <div className="layerlab-row">
+          <button type="submit" className="layerlab-button primary" disabled={busy}>Join</button>
+          <button type="button" className="layerlab-button" onClick={onSignOut}>Use a different account</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function SignIn({ google, initialCode, onSignedIn, onNotice }: {
+  google: boolean;
+  initialCode: string;
+  onSignedIn: () => Promise<void>;
+  onNotice: (text: string) => void;
+}) {
+  const [code, setCode] = useState(initialCode);
+  useEffect(() => {
+    if (initialCode) setCode(initialCode);
+  }, [initialCode]);
   const [name, setName] = useState("");
   const [pin, setPin] = useState("");
   const [confirmClass, setConfirmClass] = useState<string | null>(null);
@@ -168,6 +320,13 @@ function SignIn({ onSignedIn, onNotice }: { onSignedIn: () => Promise<void>; onN
         <h1>
           <GraduationCap size={20} /> Join your class
         </h1>
+        {google ? (
+          <>
+            <p className="layerlab-muted">Sign in with your school Google account. The first time, you type the class code from your teacher.</p>
+            <GoogleButton />
+            <p className="layerlab-divider"><span>or join with a PIN</span></p>
+          </>
+        ) : null}
         <p className="layerlab-muted">Use the code from your teacher. The first time, pick a PIN you will remember. You will need it to sign in again.</p>
         <label>
           Class code
@@ -200,7 +359,8 @@ function SignIn({ onSignedIn, onNotice }: { onSignedIn: () => Promise<void>; onN
         <h1>
           <KeyRound size={20} /> Teacher
         </h1>
-        <p className="layerlab-muted">The password is the one set for this server.</p>
+        {google ? <GoogleButton label="Teacher sign in with Google" /> : null}
+        <p className="layerlab-muted">{google ? "Or use the password set for this server." : "The password is the one set for this server."}</p>
         <label>
           Password
           <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
@@ -217,7 +377,7 @@ function SignIn({ onSignedIn, onNotice }: { onSignedIn: () => Promise<void>; onN
 
 type Selected = { classId: string; student: LayerLabStudent; design: LayerLabDesign } | null;
 
-function TeacherView({ storeEnabled, onNotice }: { storeEnabled: boolean; onNotice: (text: string) => void }) {
+function TeacherView({ storeEnabled, link, onNotice }: { storeEnabled: boolean; link: LayerLabPageLink; onNotice: (text: string) => void }) {
   const [classes, setClasses] = useState<LayerLabClassSummary[]>([]);
   const [classId, setClassId] = useState<string | null>(null);
   const [current, setCurrent] = useState<LayerLabClass | null>(null);
@@ -225,8 +385,26 @@ function TeacherView({ storeEnabled, onNotice }: { storeEnabled: boolean; onNoti
   const [tab, setTab] = useState<"students" | "tutorials">("students");
   const [newName, setNewName] = useState("");
   const [selected, setSelected] = useState<Selected>(null);
+  // A design link a student turned in on Google Classroom opens that design once its class is loaded.
+  const [wanted, setWanted] = useState(link.design ?? null);
 
   const fail = useCallback((error: unknown) => onNotice((error as Error).message), [onNotice]);
+
+  useEffect(() => {
+    if (link.design) {
+      setWanted(link.design);
+      setClassId(link.design.classId);
+    }
+  }, [link.design]);
+
+  useEffect(() => {
+    if (!wanted || !current || current.id !== wanted.classId) return;
+    const student = current.students.find((entry) => entry.id === wanted.studentId);
+    const design = designs[wanted.studentId]?.find((entry) => entry.key === wanted.key);
+    if (student && design) setSelected({ classId: current.id, student, design });
+    else onNotice("That design is not here any more. It may have been renamed or the student removed.");
+    setWanted(null);
+  }, [wanted, current, designs, onNotice]);
 
   const loadClasses = useCallback(async () => {
     try {
@@ -326,6 +504,14 @@ function TeacherView({ storeEnabled, onNotice }: { storeEnabled: boolean; onNoti
               <div>
                 <h1>{current.name}</h1>
                 <p className="layerlab-muted">Students go to this site, choose LayerLab and type the code.</p>
+                <button type="button" className="layerlab-button" onClick={() => openClassroomShare(classroomShareUrl({
+                  url: classPageUrl(window.location.origin, current.code),
+                  title: `Join ${current.name} on LayerLab`,
+                  body: `Open the link and sign in. Class code: ${current.code}`,
+                  itemType: "material",
+                }))}>
+                  <Share2 size={14} /> Post the join link in Google Classroom
+                </button>
               </div>
               <div className="layerlab-code">
                 <small>Join code</small>
@@ -407,6 +593,7 @@ function StudentsPanel({ current, designs, onOpen, onAction }: {
           <div key={student.id} className="layerlab-card layerlab-student">
             <div className="layerlab-student-head">
               <h3>{student.name}</h3>
+              {student.google ? <span className="layerlab-tag" title="Signs in with a Google account">Google</span> : null}
               <small className="layerlab-muted">joined {when(student.joinedAt)} · {plural(work.length, "design")}</small>
               <span className="layerlab-spacer" />
               <button type="button" className="layerlab-button" onClick={() => {
@@ -579,6 +766,14 @@ function TutorialsPanel({ current, onChanged, onNotice }: { current: LayerLabCla
             <div className="layerlab-student-head">
               <h3>{tutorial.title}</h3>
               <span className="layerlab-spacer" />
+              <button type="button" className="layerlab-button" title="Post this tutorial as an assignment in Google Classroom" onClick={() => openClassroomShare(classroomShareUrl({
+                url: classPageUrl(window.location.origin, current.code, tutorial.id),
+                title: tutorial.title,
+                body: `${tutorial.body.split(/\n\s*\n/)[0] ?? ""}\n\nOpen the link to start in LayerLab. When you are done, open your design in LayerLab and press "Turn in on Google Classroom".`.trim(),
+                itemType: "assignment",
+              }))}>
+                <Share2 size={14} /> Assign in Classroom
+              </button>
               <button type="button" className="layerlab-button" onClick={() => setEditing(tutorial)}>Edit</button>
               <button type="button" className="layerlab-button danger" onClick={() => {
                 if (window.confirm(`Delete the tutorial "${tutorial.title}"?`)) void call("deleteTutorial", { tutorialId: tutorial.id });
@@ -684,6 +879,15 @@ function DesignReview({ role, classId, student, design, onClose, onNotice }: {
             <small className="layerlab-muted">{role === "teacher" ? `${student.name} · ` : ""}last saved {when(design.updatedAt)}</small>
           </div>
           <span className="layerlab-spacer" />
+          {role === "student" ? (
+            <button type="button" className="layerlab-button" title="Attach this design to an assignment in Google Classroom and turn it in" onClick={() => openClassroomShare(classroomShareUrl({
+              url: designPageUrl(window.location.origin, classId, student.id, design.key),
+              title: `${design.name} (${student.name})`,
+              body: `My LayerLab design "${design.name}". The link opens it with every saved version and our comments.`,
+            }))}>
+              <Share2 size={14} /> Turn in on Google Classroom
+            </button>
+          ) : null}
           <a className="layerlab-button primary" href={openShown}>
             {shownIteration ? `Open version ${iterationNumber(shownIteration.id)}` : role === "student" ? "Open in layerling" : "Open a copy in layerling"}
           </a>
@@ -775,7 +979,7 @@ function DesignReview({ role, classId, student, design, onClose, onNotice }: {
 
 /* ---------- the student ---------- */
 
-function StudentView({ status, onNotice }: { status: LayerLabStatus; onNotice: (text: string) => void }) {
+function StudentView({ status, link, onNotice }: { status: LayerLabStatus; link: LayerLabPageLink; onNotice: (text: string) => void }) {
   const student = status.student!;
   const [current, setCurrent] = useState<LayerLabClass | null>(null);
   const [designs, setDesigns] = useState<LayerLabDesign[]>([]);
@@ -795,6 +999,18 @@ function StudentView({ status, onNotice }: { status: LayerLabStatus; onNotice: (
   useEffect(() => {
     void load();
   }, [load]);
+
+  // From a Classroom link: open the design it names, or scroll to the tutorial it names.
+  const followed = useRef(false);
+  useEffect(() => {
+    if (followed.current || !current) return;
+    followed.current = true;
+    if (link.design && link.design.classId === student.classId && link.design.studentId === student.studentId) {
+      const design = designs.find((entry) => entry.key === link.design?.key);
+      if (design) setSelected(design);
+    }
+    if (link.tutorialId) document.getElementById(`tutorial-${link.tutorialId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [current, designs, link, student.classId, student.studentId]);
 
   const start = async (starterId: string) => {
     setStarting(starterId);
@@ -828,7 +1044,7 @@ function StudentView({ status, onNotice }: { status: LayerLabStatus; onNotice: (
           <button type="button" className="layerlab-icon-button" onClick={load} title="Refresh"><RefreshCw size={15} /></button>
           <a className="layerlab-button primary" href={LAYERLAB_NEW_DESIGN_URL}><Plus size={14} /> New design</a>
         </div>
-        <p className="layerlab-muted">Everything you design in layerling is saved for your class, and your teacher can see it. Click a design to read your teacher&apos;s comments.</p>
+        <p className="layerlab-muted">Everything you design in layerling is saved for your class, and your teacher can see it. Click a design to read your teacher&apos;s comments or to turn it in on Google Classroom.</p>
         {designs.length ? (
           <div className="layerlab-designs">
             {designs.map((design) => (
@@ -842,7 +1058,7 @@ function StudentView({ status, onNotice }: { status: LayerLabStatus; onNotice: (
         <section className="layerlab-card">
           <h1><BookOpen size={20} /> Tutorials</h1>
           {current.tutorials.map((tutorial) => (
-            <article key={tutorial.id} className="layerlab-tutorial">
+            <article key={tutorial.id} id={`tutorial-${tutorial.id}`} className={`layerlab-tutorial${link.tutorialId === tutorial.id ? " highlighted" : ""}`}>
               <h3>{tutorial.title}</h3>
               <TutorialBody tutorial={tutorial} current={current} action={tutorial.lessonId ? lessonButton(tutorial.lessonId) : tutorial.starterId ? startButton(tutorial.starterId) : null} />
             </article>
