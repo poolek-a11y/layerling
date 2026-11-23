@@ -447,3 +447,124 @@ html[data-lesson-open] .workplane-stage .camera-controls {
 @media (max-width: 720px) {
   .lesson-panel { width: min(300px, 86vw); }
 }
+
+/* The shape library of a lesson (Layered Mandala's shape builders and the student's own motifs). */
+
+.lesson-library-row {
+  padding: 8px 14px 0;
+}
+
+.lesson-library-button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lesson-library-button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.motif-tabs {
+  margin: 10px 0 8px;
+}
+
+.motif-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.motif-tile {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--tile-hover);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.motif-tile.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+.motif-tile small {
+  font-size: 11.5px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.motif-tile img,
+.motif-tile .motif-tile-empty,
+.motif-tile .motif-preview {
+  display: block;
+  width: 60px;
+  height: 60px;
+}
+
+.motif-tile img {
+  object-fit: contain;
+}
+
+.motif-fields {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.motif-fields label {
+  display: grid;
+  grid-template-columns: 1fr 92px;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.motif-fields input {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+}
+
+.motif-fields label:has(input[type="text"]) {
+  grid-template-columns: auto 1fr;
+}
+
+.motif-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 8px 0 12px;
+}
+
+.motif-step-result {
+  margin-top: 8px;
+}
+
+.motif-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}

@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Compass, Lightbulb, PencilRuler, Sparkles, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Compass, Flower2, Lightbulb, PencilRuler, Sparkles, X } from "lucide-react";
 import { LessonFigure } from "@/components/lessons/LessonFigure";
+import { MotifLibrary, type LessonLibraryTools } from "@/components/lessons/MotifLibrary";
 import { lessonText, type LessonUnits } from "@/lib/lessons/units";
 import {
   LESSONS,
@@ -37,12 +38,15 @@ type Props = {
   onUseUnits: (units: string) => void;
   /** The orange outlines of where the current step's part goes, for the 3D view; null for none. */
   onGhostChange?: (ghost: GhostPart[] | null) => void;
+  /** The editor's side of a lesson's shape library (Layered Mandala): build a ring, and the student's own motifs. */
+  libraryTools?: LessonLibraryTools;
 };
 
 const STAR_COLOURS = ["#ff5a47", "#ff9e2c", "#ffc93c", "#2fbf71", "#16c0d4", "#8a5bf0", "#e7399e", "#5b83c4"];
 
-export function LessonPanel({ projectId, shapes, projectName, units, inchFormat, onUseUnits, onGhostChange }: Props) {
+export function LessonPanel({ projectId, shapes, projectName, units, inchFormat, onUseUnits, onGhostChange, libraryTools }: Props) {
   const [progress, setProgress] = useState<LessonProgress | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [hintOpen, setHintOpen] = useState(false);
   const [burst, setBurst] = useState(0);
 
@@ -259,6 +263,20 @@ export function LessonPanel({ projectId, shapes, projectName, units, inchFormat,
         </button>
       </header>
 
+      {lesson.library ? (
+        <div className="lesson-library-row">
+          <button
+            type="button"
+            className={libraryOpen ? "lesson-library-button active" : "lesson-library-button"}
+            aria-pressed={libraryOpen}
+            onClick={() => setLibraryOpen((open) => !open)}
+            title="Shape builders and my motifs"
+          >
+            <Flower2 size={15} aria-hidden="true" /> {libraryOpen ? "Back to the lesson" : "Shape builders and my motifs"}
+          </button>
+        </div>
+      ) : null}
+
       <label className="lesson-section-picker">
         <span className="visually-hidden">Section</span>
         <select value={progress.section} onChange={(event) => goTo(Number(event.target.value))}>
@@ -282,13 +300,23 @@ export function LessonPanel({ projectId, shapes, projectName, units, inchFormat,
       ) : null}
 
       <div className="lesson-panel-body">
-        {ownWay ? (
+        {lesson.library && libraryOpen ? (
+          <>
+            <MotifLibrary tools={libraryTools} metric={metric} />
+            {step && result ? (
+              <p className={result.ok ? "lesson-result ok motif-step-result" : "lesson-result motif-step-result"} role="status" aria-live="polite">
+                {result.ok ? <Check size={15} aria-hidden="true" /> : <span className="lesson-dot" aria-hidden="true" />}
+                <span><strong>{tx(step.title)}:</strong> {tx(result.ok ? (result.message ?? step.success ?? "Nice, you did it!") : result.message ?? "Not yet.")}</span>
+              </p>
+            ) : null}
+          </>
+        ) : ownWay ? (
           <>
             <h2>{section.freestyle ? "Freestyle" : `${section.title}: my own design`}</h2>
             <p>{tx(section.goal)}</p>
             {section.freestyle ? (
               <>
-                <p>No steps here. Build a new kokeshi, a family of dolls, or add more to yours. Here is every skill you have used so far:</p>
+                <p>{lesson.freestyleText ?? "No steps here. Build a new kokeshi, a family of dolls, or add more to yours. Here is every skill you have used so far:"}</p>
                 {skills.length ? (
                   <ul className="lesson-skill-list">
                     {skills.map((entry) => (

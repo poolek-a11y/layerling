@@ -1,7 +1,9 @@
 import kokeshi from "@/lib/lessons/kokeshi";
+import mandala from "@/lib/lessons/mandala";
+import mandalaCross from "@/lib/lessons/mandalaCross";
 import type { Lesson, LessonSection, LessonStep } from "@/lib/lessons/types";
 
-export const LESSONS: Record<string, Lesson> = { [kokeshi.id]: kokeshi };
+export const LESSONS: Record<string, Lesson> = { [kokeshi.id]: kokeshi, [mandala.id]: mandala, [mandalaCross.id]: mandalaCross };
 
 
 /* ---------- starting a lesson from a link ---------- */

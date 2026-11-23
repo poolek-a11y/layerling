@@ -104,4 +104,8 @@ export type Lesson = {
   sections: LessonSection[];
   /** The workspace units the lesson's numbers are in; the panel offers to switch. */
   units: "Imperial" | "Metric (Default)";
+  /** A library of shape builders the panel offers at its top (Layered Mandala's rings), with the student's own saved motifs. */
+  library?: "mandala";
+  /** The freestyle page's opening sentence, before the list of skills. */
+  freestyleText?: string;
 };

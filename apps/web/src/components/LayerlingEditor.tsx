@@ -108,6 +108,7 @@ import { useHistoryViewPicking } from "./workplane/useHistoryViewPicking";
 import { ShortcutsModal } from "./workplane/ShortcutsModal";
 import { InteractiveHelp } from "./InteractiveHelp";
 import { LessonPanel } from "./lessons/LessonPanel";
+import { useLessonLibrary } from "./lessons/useLessonLibrary";
 import type { GhostPart } from "@/lib/lessons/types";
 import { ShapeContextMenu, type ShapeContextMenuItem } from "./workplane/ShapeContextMenu";
 import { nextSelectionTransparency } from "@/lib/selectionTransparency";
@@ -11723,6 +11724,11 @@ export function LayerlingEditor({
     shapesRef, selectedIdsRef, notesRef, historyViewStateRef, projectAssetsRef, workspaceSettingsRef, snapGridRef, projectInfoRef, placementWorkplaneRef,
   });
   const noticeError = (error: unknown) => setNotice(error instanceof Error ? localizedError(error.message) : String(error));
+  // LayerLab lessons with a shape library (Layered Mandala): its builders and the student's own motifs.
+  const lessonLibraryTools = useLessonLibrary({
+    shapesRef, selectedIds, commitShapes, setNotice, noticeError, customShapeEntries, customShapeFolders,
+    serverAvailable: customShapesServerAvailable, saveSelectionAsMyShape, insertMyShape, createShapeFolder,
+  });
 
   /**
    * Throws away every earlier step of the design: it keeps the state it has now, as its only one
@@ -17650,6 +17656,7 @@ export function LayerlingEditor({
             snap: snapGridRef.current,
           })}
           onGhostChange={setLessonGhost}
+          libraryTools={lessonLibraryTools}
         />
       ) : null}
       {viewedAttachment ? <AttachmentViewer attachment={viewedAttachment} onClose={() => setViewedAttachmentId(null)} /> : null}
