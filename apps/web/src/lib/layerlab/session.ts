@@ -126,3 +126,47 @@ export function layerLabUserFolder(request: Request, env: Environment = process.
 export function layerLabClosesStore(request: Request, env: Environment = process.env) {
   return layerLabEnabled(env) && !sessionFromRequest(request, env);
 }
+
+/**
+ * A short-lived signed value for the Google sign-in: what the browser carries between LayerLab,
+ * Google and back. `purpose` keeps one kind from being passed off as another, and none of them
+ * reads as a session, which needs a role.
+ */
+export function encodeSigned(purpose: string, value: Record<string, unknown>, env: Environment = process.env) {
+  const payload = Buffer.from(JSON.stringify({ ...value, purpose, issuedAt: Date.now() })).toString("base64url");
+  return `${payload}.${signature(payload, env)}`;
+}
+
+export function decodeSigned<T extends Record<string, unknown>>(
+  purpose: string,
+  value: string | null | undefined,
+  maxAgeMs: number,
+  env: Environment = process.env,
+  now = Date.now(),
+): T | null {
+  if (!value || !layerLabEnabled(env)) return null;
+  const [payload, given] = value.split(".");
+  if (!payload || !given) return null;
+  const expected = Buffer.from(signature(payload, env));
+  const actual = Buffer.from(given);
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Record<string, unknown>;
+    if (parsed.purpose !== purpose || typeof parsed.issuedAt !== "number" || now - parsed.issuedAt > maxAgeMs) return null;
+    return parsed as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether the page came over HTTPS, so cookies are marked Secure. */
+export function requestIsHttps(request: Request) {
+  const forwarded = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  return (forwarded || new URL(request.url).protocol.replace(/:$/, "")) === "https";
+}
+
+/** A cookie for any LayerLab value; `null` clears it. */
+export function plainCookie(request: Request, name: string, value: string | null, maxAgeSeconds: number) {
+  const secure = requestIsHttps(request);
+  return `${name}=${value ? encodeURIComponent(value) : ""}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${value ? maxAgeSeconds : 0}${secure ? "; Secure" : ""}`;
+}

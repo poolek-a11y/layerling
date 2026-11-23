@@ -2,8 +2,12 @@ import { promises as fs } from "fs";
 import { NextResponse } from "next/server";
 import { inspectLylProjectPackage, LYL_LIMITS, LYL_MEDIA_TYPE, withLylProjectName } from "@/lib/lylProject";
 import { originMatchesRequest } from "@/lib/sameOrigin";
+import { checkAttempts, clearAttempts, failedAttempt } from "@/lib/layerlab/attempts";
+import { GOOGLE_PENDING_COOKIE, googleConfig, pendingFromRequest } from "@/lib/layerlab/google";
+import { placeGoogleStudent } from "@/lib/layerlab/googleJoin";
 import {
   hashPin,
+  plainCookie,
   layerLabEnabled,
   pinMatches,
   sessionCookie,
@@ -56,28 +60,6 @@ export const revalidate = false;
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
-/* ---------- guessing PINs and passwords takes time ---------- */
-
-const attempts = new Map<string, { failures: number; until: number }>();
-const ATTEMPT_LIMIT = 8;
-const LOCK_MS = 5 * 60 * 1000;
-
-function checkAttempts(key: string) {
-  const entry = attempts.get(key);
-  if (entry && entry.until > Date.now()) throw new LayerLabError("Too many wrong tries. Wait five minutes and try again.", 429);
-}
-
-function failedAttempt(key: string) {
-  const entry = attempts.get(key) ?? { failures: 0, until: 0 };
-  entry.failures += 1;
-  if (entry.failures >= ATTEMPT_LIMIT) {
-    entry.failures = 0;
-    entry.until = Date.now() + LOCK_MS;
-  }
-  attempts.set(key, entry);
-  if (attempts.size > 10000) attempts.clear();
-}
-
 function clientAddress(request: Request) {
   return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "local";
 }
@@ -113,10 +95,21 @@ function disabled() {
   return json({ error: "LayerLab is not switched on for this server" }, { status: 404 });
 }
 
+async function googleStatus(request: Request): Promise<LayerLabStatus["google"]> {
+  if (!googleConfig()) return { enabled: false };
+  const pending = pendingFromRequest(request);
+  if (!pending) return { enabled: true };
+  const placed = await placeGoogleStudent(pending).catch(() => null);
+  const classes = placed && "needs" in placed && placed.needs === "pick" ? placed.classes : [];
+  return { enabled: true, pending: { name: pending.givenName, classes } };
+}
+
 async function status(request: Request): Promise<LayerLabStatus> {
   const base: LayerLabStatus = { enabled: layerLabEnabled(), storeEnabled: Boolean(sharedStoreRoot()), role: null };
+  if (!base.enabled) return base;
+  base.google = await googleStatus(request);
   const session = sessionFromRequest(request);
-  if (!session || !base.enabled) return base;
+  if (!session) return base;
   if (session.role === "teacher") return { ...base, role: "teacher" };
   try {
     const { stored, student } = await findStudent(session.classId, session.studentId);
@@ -246,7 +239,24 @@ export async function POST(request: Request) {
     if (action === "status") return json(await status(request));
 
     if (action === "signOut") {
-      return json({ ok: true }, { headers: { "Set-Cookie": sessionCookie(request, null) } });
+      const response = json({ ok: true }, { headers: { "Set-Cookie": sessionCookie(request, null) } });
+      response.headers.append("Set-Cookie", plainCookie(request, GOOGLE_PENDING_COOKIE, null, 0));
+      return response;
+    }
+
+    if (action === "googleContinue") {
+      const pending = pendingFromRequest(request);
+      if (!pending) throw new LayerLabError("Your Google sign-in timed out. Sign in with Google again.", 401);
+      const placed = await placeGoogleStudent(pending, {
+        code: stringField(body.code) || undefined,
+        classId: stringField(body.classId) || undefined,
+        pin: stringField(body.pin) || undefined,
+        asNew: body.asNew === true,
+      });
+      if (!("session" in placed)) return json(placed);
+      const response = json({ ok: true }, { headers: { "Set-Cookie": sessionCookie(request, placed.session) } });
+      response.headers.append("Set-Cookie", plainCookie(request, GOOGLE_PENDING_COOKIE, null, 0));
+      return response;
     }
 
     if (action === "teacherSignIn") {
@@ -256,7 +266,7 @@ export async function POST(request: Request) {
         failedAttempt(key);
         throw new LayerLabError("That password is not right", 401);
       }
-      attempts.delete(key);
+      clearAttempts(key);
       const cookie = sessionCookie(request, { role: "teacher", issuedAt: Date.now() });
       return json({ ok: true }, { headers: { "Set-Cookie": cookie } });
     }
@@ -275,7 +285,7 @@ export async function POST(request: Request) {
           failedAttempt(key);
           throw new LayerLabError("That name is in this class already and the PIN does not match. Ask your teacher to reset it.", 401);
         }
-        attempts.delete(key);
+        clearAttempts(key);
       } else if (body.create === true) {
         student = await addStudent(stored.id, name, hashPin(pin));
       } else {

@@ -2,7 +2,7 @@
 
 export const LAYERLAB_ENDPOINT = "/api/layerlab";
 
-export type LayerLabStudent = { id: string; name: string; joinedAt: number };
+export type LayerLabStudent = { id: string; name: string; joinedAt: number; /** Signs in with a Google account. */ google?: boolean };
 
 export type LayerLabTutorial = {
   id: string;
@@ -70,4 +70,13 @@ export type LayerLabStatus = {
   storeEnabled: boolean;
   role: "teacher" | "student" | null;
   student?: { classId: string; className: string; studentId: string; name: string };
+  /** Google sign-in: whether it is set up, and a student who signed in with Google but has not picked a class yet. */
+  google?: { enabled: boolean; pending?: { name: string; classes: Array<{ id: string; name: string }> } };
 };
+
+/** What the page does next for a student who signed in with Google. */
+export type LayerLabGoogleAnswer =
+  | { ok: true }
+  | { needs: "code" }
+  | { needs: "pick"; classes: Array<{ id: string; name: string }> }
+  | { needs: "pin"; className: string; name: string };
